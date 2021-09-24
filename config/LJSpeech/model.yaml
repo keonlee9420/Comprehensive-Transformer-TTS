@@ -30,6 +30,11 @@ conformer:
   encoder_dropout: 0.1
   decoder_dropout: 0.1
 
+reformer:
+  depth: 6
+  encoder_head: 8
+  decoder_head: 8
+
 variance_predictor:
   filter_size: 256
   kernel_size: 3

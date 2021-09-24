@@ -1,3 +1,5 @@
+product_key_memory == 0.1.10
+local_attention == 1.4.3
 rotary_embedding_torch == 0.1.0
 python_speech_features == 0.6
 pandas == 1.1.5 

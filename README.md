@@ -1,19 +1,19 @@
 # Comprehensive-Transformer-TTS - PyTorch Implementation
 
-A Non-Autoregressive Transformer based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**.
+**A Non-Autoregressive Transformer** based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**. Any suggestions toward the best Non-AR TTS are welcome.
 
 ### Transformers
 - [x] [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) (Wu et al., 2021)
 - [x] [Long-Short Transformer: Efficient Transformers for Language and Vision](https://arxiv.org/abs/2107.02192) (Zhu et al., 2021)
 - [x] [Conformer: Convolution-augmented Transformer for Speech Recognition](https://arxiv.org/abs/2005.08100) (Gulati et al., 2020)
-- [ ] [Reformer: The Efficient Transformer](https://arxiv.org/abs/2001.04451) (Kitaev et al., 2020)
+- [x] [Reformer: The Efficient Transformer](https://arxiv.org/abs/2001.04451) (Kitaev et al., 2020)
 - [x] [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017)
 
 ### Supervised Duration Modelings
 - [x] [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558) (Ren et al., 2020)
 
 ### Unsupervised Duration Modelings
-- [x] [One TTS Alignment To Rule Them All](https://arxiv.org/abs/2108.10447) (Badlani et al., 2021)
+- [x] [One TTS Alignment To Rule Them All](https://arxiv.org/abs/2108.10447) (Badlani et al., 2021): finally freed from external aligners like MFA!
 
 ### Transformer Performance Comparison on LJSpeech (1 TITAN RTX 24G / 16 batch size)
 | Model | Memory Usage | Training Time (1K steps) |
@@ -22,13 +22,13 @@ A Non-Autoregressive Transformer based TTS, supporting a family of SOTA transfor
 |Fastformer (wuch15's)|10515MiB / 24220MiB|4m 45s
 |Long-Short Transformer|10633MiB / 24220MiB|5m 26s
 |Conformer|18903MiB / 24220MiB|7m 4s
-|Reformer|-|-
+|Reformer|10293MiB / 24220MiB|10m 16s
 |Transformer|7909MiB / 24220MiB|4m 51s
 
 Toggle type of building blocks by
 ```yaml
 # In the model.yaml
-block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer"]
+block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer", "reformer"]
 ```
 
 Toggle type of duration modelings by
@@ -161,4 +161,5 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [lucidrains' fast-transformer-pytorch](https://github.com/lucidrains/fast-transformer-pytorch)
 - [lucidrains' long-short-transformer](https://github.com/lucidrains/long-short-transformer)
 - [sooftware's conformer](https://github.com/sooftware/conformer)
+- [lucidrains' reformer-pytorch](https://github.com/lucidrains/reformer-pytorch)
 - [NVIDIA' NeMo](https://github.com/NVIDIA/NeMo): special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.

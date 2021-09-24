@@ -24,6 +24,8 @@ class CompTransTTS(nn.Module):
             from .transformers.fastformer import TextEncoder, Decoder
         elif model_config["block_type"] == "conformer":
             from .transformers.conformer import TextEncoder, Decoder
+        elif model_config["block_type"] == "reformer":
+            from .transformers.reformer import TextEncoder, Decoder
         else:
             raise NotImplementedError
 
