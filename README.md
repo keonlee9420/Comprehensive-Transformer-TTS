@@ -13,7 +13,7 @@
 - [x] [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558) (Ren et al., 2020)
 
 ### Unsupervised Duration Modelings
-- [x] [One TTS Alignment To Rule Them All](https://arxiv.org/abs/2108.10447) (Badlani et al., 2021): We are finally freed from external aligners like MFA! The validation alignment up to 70K is shown below.
+- [x] [One TTS Alignment To Rule Them All](https://arxiv.org/abs/2108.10447) (Badlani et al., 2021): We are finally freed from external aligners such as MFA! Validation alignments for LJ014-0329 up to 70K are shown below as an example.
 
   <p align="center">
       <img src="./img/LJ014-0329.gif" width="60%">
@@ -29,13 +29,13 @@
 |Reformer|10293MiB / 24220MiB|10m 16s
 |Transformer|7909MiB / 24220MiB|4m 51s
 
-Toggle type of building blocks by
+Toggle the type of building blocks by
 ```yaml
 # In the model.yaml
 block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer", "reformer"]
 ```
 
-Toggle type of duration modelings by
+Toggle the type of duration modelings by
 ```yaml
 # In the model.yaml
 duration_modeling:
@@ -55,7 +55,7 @@ Also, `Dockerfile` is provided for `Docker` users.
 
 ## Inference
 
-You have to download the [pretrained models](https://drive.google.com/drive/folders/1xEOVbv3PLfGX8EgEkzg1014c9h8QMxQ-?usp=sharing) and put them in `output/ckpt/DATASET/`. The model is trained on LJSpeech with unsupervised duration modeling under transformer building blocks.
+You have to download the [pretrained models](https://drive.google.com/drive/folders/1xEOVbv3PLfGX8EgEkzg1014c9h8QMxQ-?usp=sharing) and put them in `output/ckpt/DATASET/`. The models are trained with unsupervised duration modeling under transformer building block.
 
 For a **single-speaker TTS**, run
 ```
@@ -123,8 +123,8 @@ Train your model with
 python3 train.py --dataset DATASET
 ```
 Useful options:
-- Support [Automatic Mixed Precision](https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html) by `--use_amp` argument.
-- Assume single-node multi-GPU training. To use a specific GPU, specify `CUDA_VISIBLE_DEVICES=<GPU_ID>` at the beginning of the above command.
+- To use a [Automatic Mixed Precision](https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html), append `--use_amp` argument to the above command.
+- The trainer assumes single-node multi-GPU training. To use specific GPUs, specify `CUDA_VISIBLE_DEVICES=<GPU_IDs>` at the beginning of the above command.
 
 # TensorBoard
 
@@ -166,4 +166,4 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [lucidrains' long-short-transformer](https://github.com/lucidrains/long-short-transformer)
 - [sooftware's conformer](https://github.com/sooftware/conformer)
 - [lucidrains' reformer-pytorch](https://github.com/lucidrains/reformer-pytorch)
-- [NVIDIA' NeMo](https://github.com/NVIDIA/NeMo): special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.
+- [NVIDIA's NeMo](https://github.com/NVIDIA/NeMo): Special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.
