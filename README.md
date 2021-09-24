@@ -1,6 +1,6 @@
 # Comprehensive-Transformer-TTS - PyTorch Implementation
 
-**A Non-Autoregressive Transformer** based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**. Any suggestions toward the best Non-AR TTS are welcome.
+**A Non-Autoregressive Transformer** based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**. Any suggestions toward the best Non-AR TTS are welcome :)
 
 ### Transformers
 - [x] [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) (Wu et al., 2021)
@@ -13,7 +13,11 @@
 - [x] [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558) (Ren et al., 2020)
 
 ### Unsupervised Duration Modelings
-- [x] [One TTS Alignment To Rule Them All](https://arxiv.org/abs/2108.10447) (Badlani et al., 2021): finally freed from external aligners like MFA!
+- [x] [One TTS Alignment To Rule Them All](https://arxiv.org/abs/2108.10447) (Badlani et al., 2021): We are finally freed from external aligners like MFA! The validation alignment up to 70K is shown below.
+
+  <p align="center">
+      <img src="./img/LJ014-0329.gif" width="60%">
+  </p>
 
 ### Transformer Performance Comparison on LJSpeech (1 TITAN RTX 24G / 16 batch size)
 | Model | Memory Usage | Training Time (1K steps) |
@@ -130,11 +134,11 @@ tensorboard --logdir output/log
 ```
 
 to serve TensorBoard on your localhost.
-<!-- The loss curves, synthesized mel-spectrograms, and audios are shown.
+The loss curves, synthesized mel-spectrograms, and audios are shown.
 
 ![](./img/tensorboard_loss.png)
 ![](./img/tensorboard_spec.png)
-![](./img/tensorboard_audio.png) -->
+![](./img/tensorboard_audio.png)
 
 # Notes
 
