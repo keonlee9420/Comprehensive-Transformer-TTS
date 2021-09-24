@@ -18,6 +18,8 @@ class CompTransTTS(nn.Module):
 
         if model_config["block_type"] == "transformer":
             from .transformers.transformer import TextEncoder, Decoder
+        elif model_config["block_type"] == "lstransformer":
+            from .transformers.lstransformer import TextEncoder, Decoder
         elif model_config["block_type"] == "fastformer":
             from .transformers.fastformer import TextEncoder, Decoder
         elif model_config["block_type"] == "conformer":

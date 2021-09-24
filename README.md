@@ -4,7 +4,7 @@ A Non-Autoregressive Transformer based TTS, supporting a family of SOTA transfor
 
 ### Transformers
 - [x] [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) (Wu et al., 2021)
-- [ ] [Long-Short Transformer: Efficient Transformers for Language and Vision](https://arxiv.org/abs/2107.02192) (Zhu et al., 2021)
+- [x] [Long-Short Transformer: Efficient Transformers for Language and Vision](https://arxiv.org/abs/2107.02192) (Zhu et al., 2021)
 - [x] [Conformer: Convolution-augmented Transformer for Speech Recognition](https://arxiv.org/abs/2005.08100) (Gulati et al., 2020)
 - [ ] [Reformer: The Efficient Transformer](https://arxiv.org/abs/2001.04451) (Kitaev et al., 2020)
 - [x] [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017)
@@ -20,7 +20,7 @@ A Non-Autoregressive Transformer based TTS, supporting a family of SOTA transfor
 | --- | ----------- | ----- |
 |Fastformer (lucidrains')|10531MiB / 24220MiB|4m 25s
 |Fastformer (wuch15's)|10515MiB / 24220MiB|4m 45s
-|Long-Short Transformer|-|-
+|Long-Short Transformer|10633MiB / 24220MiB|5m 26s
 |Conformer|18903MiB / 24220MiB|7m 4s
 |Reformer|-|-
 |Transformer|7909MiB / 24220MiB|4m 51s
@@ -28,7 +28,7 @@ A Non-Autoregressive Transformer based TTS, supporting a family of SOTA transfor
 Toggle type of building blocks by
 ```yaml
 # In the model.yaml
-block_type: "transformer" # ["transformer", "fastformer", "conformer"]
+block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer"]
 ```
 
 Toggle type of duration modelings by
@@ -159,5 +159,6 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
 - [wuch15's Fastformer](https://github.com/wuch15/Fastformer)
 - [lucidrains' fast-transformer-pytorch](https://github.com/lucidrains/fast-transformer-pytorch)
+- [lucidrains' long-short-transformer](https://github.com/lucidrains/long-short-transformer)
 - [sooftware's conformer](https://github.com/sooftware/conformer)
 - [NVIDIA' NeMo](https://github.com/NVIDIA/NeMo): special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.

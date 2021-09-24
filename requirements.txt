@@ -1,6 +1,7 @@
+rotary_embedding_torch == 0.1.0
 python_speech_features == 0.6
 pandas == 1.1.5 
-tensorflow == 2.5.0
+tensorflow == 2.5.1
 g2p-en == 2.1.0
 inflect == 4.1.0
 librosa == 0.7.2
@@ -18,5 +19,5 @@ tgt == 1.4.4
 torch == 1.7.0
 tqdm==4.46.1
 unidecode == 1.1.1
-pillow == 8.3.1
+pillow == 8.3.2
 einops >= 0.3
