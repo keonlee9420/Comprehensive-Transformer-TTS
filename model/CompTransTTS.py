@@ -85,18 +85,15 @@ class CompTransTTS(nn.Module):
             else None
         )
 
-        output, text_embeds = self.encoder(texts, src_masks)
+        texts, text_embeds = self.encoder(texts, src_masks)
 
+        speaker_embeds = None
         if self.speaker_emb is not None:
             if self.embedder_type == "none":
-                output = output + self.speaker_emb(speakers).unsqueeze(1).expand(
-                    -1, max_src_len, -1
-                )
+                speaker_embeds = self.speaker_emb(speakers) # [B, H]
             else:
                 assert spker_embeds is not None, "Speaker embedding should not be None"
-                output = output + self.speaker_emb(spker_embeds).unsqueeze(1).expand(
-                    -1, max_src_len, -1
-                )
+                speaker_embeds = self.speaker_emb(spker_embeds) # [B, H]
 
         (
             output,
@@ -110,7 +107,8 @@ class CompTransTTS(nn.Module):
             mel_masks,
             attn_outs,
         ) = self.variance_adaptor(
-            output,
+            speaker_embeds,
+            texts,
             text_embeds,
             src_lens,
             src_masks,
