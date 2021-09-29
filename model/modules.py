@@ -325,7 +325,7 @@ class VarianceAdaptor(nn.Module):
                 text_embedding.transpose(1, 2),
                 src_mask.unsqueeze(-1),
                 attn_prior.transpose(1, 2),
-                speaker_embedding.unsqueeze(1),
+                speaker_embedding,
             )
             attn_hard = self.binarize_attention_parallel(attn_soft, src_len, mel_len)
             attn_hard_dur = attn_hard.sum(2)[:, 0, :]
@@ -448,16 +448,16 @@ class AlignmentEncoder(torch.nn.Module):
             keys (torch.tensor): B x C2 x T2 tensor (text data).
             mask (torch.tensor): uint8 binary mask for variable length entries (should be in the T2 domain).
             attn_prior (torch.tensor): prior for attention matrix.
-            speaker_embed (torch.tensor): B x 1 x C tnesor of speaker embedding for multi-speaker scheme.
+            speaker_embed (torch.tensor): B x C tnesor of speaker embedding for multi-speaker scheme.
         Output:
             attn (torch.tensor): B x 1 x T1 x T2 attention mask. Final dim T2 should sum to 1.
             attn_logprob (torch.tensor): B x 1 x T1 x T2 log-prob attention mask.
         """
         if speaker_embed is not None:
-            keys = keys + self.key_spk_proj(speaker_embed.expand(
+            keys = keys + self.key_spk_proj(speaker_embed.unsqueeze(1).expand(
                 -1, keys.shape[-1], -1
             )).transpose(1, 2)
-            queries = queries + self.query_spk_proj(speaker_embed.expand(
+            queries = queries + self.query_spk_proj(speaker_embed.unsqueeze(1).expand(
                 -1, queries.shape[-1], -1
             )).transpose(1, 2)
         keys_enc = self.key_proj(keys)  # B x n_attn_dims x T2
@@ -466,7 +466,7 @@ class AlignmentEncoder(torch.nn.Module):
         # Simplistic Gaussian Isotopic Attention
         attn = (queries_enc[:, :, :, None] - keys_enc[:, :, None]) ** 2  # B x n_attn_dims x T1 x T2
         attn = -self.temperature * attn.sum(1, keepdim=True)
-        
+
         if attn_prior is not None:
             #print(f"AlignmentEncoder \t| mel: {queries.shape} phone: {keys.shape} mask: {mask.shape} attn: {attn.shape} attn_prior: {attn_prior.shape}")
             attn = self.log_softmax(attn) + torch.log(attn_prior[:, None] + 1e-8)

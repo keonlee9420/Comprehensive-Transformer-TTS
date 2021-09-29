@@ -256,7 +256,7 @@ class Preprocessor:
             return None
 
         # Read and trim wav files
-        wav, _ = librosa.load(wav_path)
+        wav, _ = librosa.load(wav_path, self.sampling_rate)
         wav = wav.astype(np.float32)
         spker_embed = self.speaker_emb(wav) if save_speaker_emb else None
         wav = wav[
