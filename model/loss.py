@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 
 class CompTransTTSLoss(nn.Module):
@@ -14,13 +15,71 @@ class CompTransTTSLoss(nn.Module):
         self.energy_feature_level = preprocess_config["preprocessing"]["energy"][
             "feature"
         ]
+        self.learn_prosody = model_config["learn_prosody"]
+        self.learn_mixture = model_config["prosody"]["learn_mixture"]
         self.learn_alignment = model_config["duration_modeling"]["learn_alignment"]
         self.binarization_loss_enable_steps = train_config["duration"]["binarization_loss_enable_steps"]
         self.binarization_loss_warmup_steps = train_config["duration"]["binarization_loss_warmup_steps"]
+        self.gmm_mdn_beta = train_config["prosody"]["gmm_mdn_beta"]
         self.sum_loss = ForwardSumLoss()
         self.bin_loss = BinLoss()
         self.mse_loss = nn.MSELoss()
         self.mae_loss = nn.L1Loss()
+
+    # def gaussian_probability(self, sigma, mu, target, mask=None):
+    #     target = target.unsqueeze(2).expand_as(sigma)
+    #     ret = (1.0 / math.sqrt(2 * math.pi)) * torch.exp(-0.5 * ((target - mu) / sigma)**2) / sigma
+    #     if mask is not None:
+    #         ret = ret.masked_fill(mask.unsqueeze(-1).unsqueeze(-1), 0)
+    #     return torch.prod(ret, 3)
+
+    # def mdn_loss(self, w, sigma, mu, target, mask=None):
+    #     """
+    #     w -- [B, src_len, num_gaussians]
+    #     sigma -- [B, src_len, num_gaussians, out_features]
+    #     mu -- [B, src_len, num_gaussians, out_features]
+    #     target -- [B, src_len, out_features]
+    #     mask -- [B, src_len]
+    #     """
+    #     prob = w * self.gaussian_probability(sigma, mu, target, mask)
+    #     nll = -torch.log(torch.sum(prob, dim=2))
+    #     if mask is not None:
+    #         nll = nll.masked_fill(mask, 0)
+    #     l_pp = torch.sum(nll, dim=1)
+    #     return torch.mean(l_pp)
+
+    def gaussian_probability(self, sigma, mu, target, mask=None):
+        """
+        prob -- [B, src_len, num_gaussians]
+        """
+        target = target.unsqueeze(2).expand_as(sigma)
+        prob = (1.0 / math.sqrt(2 * math.pi)) * torch.exp(-0.5 * ((target - mu) / sigma)**2) / sigma
+        if mask is not None:
+            prob = prob.masked_fill(mask.unsqueeze(-1).unsqueeze(-1), 0)
+        prob = torch.mean(prob, dim=3)
+        # prob = torch.sum(torch.log(prob), -1)
+        # print(torch.log(prob))
+        # print(torch.sum(torch.log(prob), -1))
+        # exit(0)
+        return prob
+
+    def mdn_loss(self, w, sigma, mu, target, mask=None):
+        """
+        w -- [B, src_len, num_gaussians]
+        sigma -- [B, src_len, num_gaussians, out_features]
+        mu -- [B, src_len, num_gaussians, out_features]
+        target -- [B, src_len, out_features]
+        mask -- [B, src_len]
+        """
+        prob = w * self.gaussian_probability(sigma, mu, target, mask)
+        # prob = w.unsqueeze(-1) * self.gaussian_probability(sigma, mu, target, mask)
+        nll = -torch.log(torch.sum(prob, dim=2))
+        # nll = -torch.sum(prob, dim=2)
+        if mask is not None:
+            nll = nll.masked_fill(mask, 0)
+            # nll = nll.masked_fill(mask.unsqueeze(-1), 0)
+        l_pp = torch.sum(nll, dim=1)
+        return torch.mean(l_pp)
 
     def forward(self, inputs, predictions, step):
         (
@@ -45,6 +104,7 @@ class CompTransTTSLoss(nn.Module):
             src_lens,
             mel_lens,
             attn_outs,
+            prosody_info,
         ) = predictions
         src_masks = ~src_masks
         mel_masks = ~mel_masks
@@ -100,8 +160,14 @@ class CompTransTTSLoss(nn.Module):
                 bin_loss_weight = min((step-self.binarization_loss_enable_steps) / self.binarization_loss_warmup_steps, 1.0) * 1.0
             bin_loss = self.bin_loss(hard_attention=attn_hard, soft_attention=attn_soft) * bin_loss_weight
 
+        mdn_loss = torch.zeros(1).to(mel_targets.device)
+        if self.learn_prosody:
+            if self.training and self.learn_mixture:
+                w, sigma, mu, prosody_embeddings = prosody_info
+                mdn_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
+
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + ctc_loss + bin_loss
+            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + ctc_loss + bin_loss + mdn_loss
         )
 
         return (
@@ -113,6 +179,7 @@ class CompTransTTSLoss(nn.Module):
             duration_loss,
             ctc_loss,
             bin_loss,
+            mdn_loss,
         )
 
 

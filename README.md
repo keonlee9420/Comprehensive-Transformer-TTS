@@ -9,6 +9,9 @@
 - [x] [Reformer: The Efficient Transformer](https://arxiv.org/abs/2001.04451) (Kitaev et al., 2020)
 - [x] [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017)
 
+### Prosody Modelings (WIP)
+- [x] [Rich Prosody Diversity Modelling with Phone-level Mixture Density Network](https://arxiv.org/abs/2102.00851) (Du et al., 2021)
+
 ### Supervised Duration Modelings
 - [x] [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558) (Ren et al., 2020)
 
@@ -33,6 +36,13 @@ Toggle the type of building blocks by
 ```yaml
 # In the model.yaml
 block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer", "reformer"]
+```
+
+Toggle the type of prosody modelings by
+```yaml
+# In the model.yaml
+prosody:
+  learn_mixture: True # for (Du et al., 2021)
 ```
 
 Toggle the type of duration modelings by
@@ -166,4 +176,5 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [lucidrains' long-short-transformer](https://github.com/lucidrains/long-short-transformer)
 - [sooftware's conformer](https://github.com/sooftware/conformer)
 - [lucidrains' reformer-pytorch](https://github.com/lucidrains/reformer-pytorch)
+- [sagelywizard's pytorch-mdn](https://github.com/sagelywizard/pytorch-mdn)
 - [NVIDIA's NeMo](https://github.com/NVIDIA/NeMo): Special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.

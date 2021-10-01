@@ -8,7 +8,7 @@ path:
   log_path: "./output/log/LJSpeech"
   result_path: "./output/result/LJSpeech"
 optimizer:
-  batch_size: 16
+  batch_size: 8
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0
@@ -27,3 +27,5 @@ duration:
   binarization_start_steps: 6000
   binarization_loss_enable_steps: 18000
   binarization_loss_warmup_steps: 10000
+prosody:
+  gmm_mdn_beta: 0.02

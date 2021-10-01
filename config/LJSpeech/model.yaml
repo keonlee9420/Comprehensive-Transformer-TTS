@@ -1,8 +1,17 @@
 block_type: "transformer"
+learn_prosody: True
 
 duration_modeling:
-  learn_alignment: True
+  learn_alignment: False
   aligner_temperature: 0.0005
+
+prosody:
+  # Du et al., 2021
+  learn_mixture: True # This is only supported under supervised duration modeling (learn_alignment: False)
+  extractor_kernel_size: 9
+  predictor_kernel_size: [9, 5]
+  predictor_num_gaussians: 20
+  predictor_dropout: 0.2
 
 transformer:
   encoder_layer: 4

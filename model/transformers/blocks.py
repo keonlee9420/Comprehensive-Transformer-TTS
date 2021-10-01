@@ -70,9 +70,9 @@ class LinearNorm(nn.Module):
 
 
 class ConvBlock(nn.Module):
-    """ Convolutional Block """
+    """ 1D Convolutional Block """
 
-    def __init__(self, in_channels, out_channels, kernel_size, dropout, activation=nn.ReLU()):
+    def __init__(self, in_channels, out_channels, kernel_size, dropout=None, normalization=nn.BatchNorm1d, activation=nn.ReLU, transpose=False):
         super(ConvBlock, self).__init__()
 
         self.conv_layer = nn.Sequential(
@@ -84,20 +84,67 @@ class ConvBlock(nn.Module):
                 padding=int((kernel_size - 1) / 2),
                 dilation=1,
                 w_init_gain="tanh",
+                transpose=transpose
             ),
-            nn.BatchNorm1d(out_channels),
-            activation
+            normalization(out_channels),
+            activation(),
         )
-        self.dropout = dropout
-        self.layer_norm = nn.LayerNorm(out_channels)
+        self.dropout = dropout if dropout is not None else None
+        self.transpose = transpose
 
     def forward(self, enc_input, mask=None):
-        enc_output = enc_input.contiguous().transpose(1, 2)
-        enc_output = F.dropout(self.conv_layer(enc_output), self.dropout, self.training)
+        if not self.transpose:
+            enc_input = enc_input.contiguous().transpose(1, 2)
+        enc_output = self.conv_layer(enc_input)
+        if self.dropout is not None:
+            enc_output = F.dropout(enc_output, self.dropout, self.training)
 
-        enc_output = self.layer_norm(enc_output.contiguous().transpose(1, 2))
+        if not self.transpose:
+            enc_output = enc_output.contiguous().transpose(1, 2)
         if mask is not None:
             enc_output = enc_output.masked_fill(mask.unsqueeze(-1), 0)
+
+        return enc_output
+
+
+class ConvBlock2D(nn.Module):
+    """ 2D Convolutional Block """
+
+    def __init__(self, in_channels, out_channels, kernel_size, dropout=None, normalization=nn.BatchNorm2d, activation=nn.ReLU, transpose=False):
+        super(ConvBlock2D, self).__init__()
+
+        self.conv_layer = nn.Sequential(
+            ConvNorm2D(
+                in_channels,
+                out_channels,
+                kernel_size=(1, kernel_size),
+                stride=1,
+                padding=(0, int((kernel_size - 1) / 2)),
+                bias=False,
+                w_init_gain="tanh",
+                transpose=transpose,
+            ),
+            normalization(out_channels),
+            activation(),
+        )
+        self.dropout = dropout if dropout is not None else None
+        self.transpose = transpose
+
+    def forward(self, enc_input, mask=None):
+        """
+        enc_input -- [B, H, W, C_in]
+        mask -- [B, H]
+        """
+        if not self.transpose:
+            enc_input = enc_input.contiguous().permute(0, 3, 1, 2) # [B, C_in, H, W]
+        enc_output = self.conv_layer(enc_input)
+        if self.dropout is not None:
+            enc_output = F.dropout(enc_output, self.dropout, self.training)
+
+        if not self.transpose:
+            enc_output = enc_output.contiguous().permute(0, 2, 3, 1) # [B, H, W, C_out]
+        if mask is not None:
+            enc_output = enc_output.masked_fill(mask.unsqueeze(-1).unsqueeze(-1), 0)
 
         return enc_output
 
@@ -144,5 +191,54 @@ class ConvNorm(nn.Module):
         x = self.conv(x)
         if self.transpose:
             x = x.contiguous().transpose(1, 2)
+
+        return x
+
+
+class ConvNorm2D(nn.Module):
+    """ 2D Convolution """
+
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        kernel_size=1,
+        stride=1,
+        padding=None,
+        dilation=1,
+        bias=True,
+        w_init_gain="linear",
+        transpose=False,
+    ):
+        super(ConvNorm2D, self).__init__()
+
+        if padding is None:
+            assert kernel_size % 2 == 1
+            padding = int(dilation * (kernel_size - 1) / 2)
+
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            bias=bias,
+        )
+
+        torch.nn.init.xavier_uniform_(
+            self.conv.weight, gain=torch.nn.init.calculate_gain(w_init_gain)
+        )
+        self.transpose = transpose
+
+    def forward(self, x):
+        """
+        x -- [B, H, W, C] or [B, C, H, W]
+        """
+        if self.transpose:
+            x = x.contiguous().permute(0, 3, 1, 2) # [B, C, H, W]
+        x = self.conv(x)
+        if self.transpose:
+            x = x.contiguous().permute(0, 2, 3, 1) # [B, H, W, C]
 
         return x
