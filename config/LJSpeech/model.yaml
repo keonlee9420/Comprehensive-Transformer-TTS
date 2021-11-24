@@ -7,11 +7,22 @@ duration_modeling:
 
 prosody:
   # Du et al., 2021
-  learn_mixture: True # This is only supported under supervised duration modeling (learn_alignment: False)
+  learn_mixture: False # This is only supported under supervised duration modeling (learn_alignment: False)
   extractor_kernel_size: 9
   predictor_kernel_size: [9, 5]
   predictor_num_gaussians: 20
   predictor_dropout: 0.2
+
+  # Liu et al., 2021
+  learn_implicit: True
+  bottleneck_size: 64
+  ref_enc_filters: [32, 32, 64, 64, 128, 128]
+  ref_enc_size: [3, 3]
+  ref_enc_strides: [1, 2] # '1' is to keep the sequence length
+  ref_enc_pad: [1, 1]
+  ref_enc_gru_size: 32
+  ref_attention_dropout: 0.2
+  token_num: 32
 
 transformer:
   encoder_layer: 4

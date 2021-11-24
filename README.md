@@ -10,6 +10,7 @@
 - [x] [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017)
 
 ### Prosody Modelings (WIP)
+- [x] [DelightfulTTS: The Microsoft Speech Synthesis System for Blizzard Challenge 2021](https://arxiv.org/abs/2110.12612) (Liu et al., 2021)
 - [x] [Rich Prosody Diversity Modelling with Phone-level Mixture Density Network](https://arxiv.org/abs/2102.00851) (Du et al., 2021)
 
 ### Supervised Duration Modelings
@@ -177,4 +178,6 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [sooftware's conformer](https://github.com/sooftware/conformer)
 - [lucidrains' reformer-pytorch](https://github.com/lucidrains/reformer-pytorch)
 - [sagelywizard's pytorch-mdn](https://github.com/sagelywizard/pytorch-mdn)
+- [keonlee9420's Robust_Fine_Grained_Prosody_Control](https://github.com/keonlee9420/Robust_Fine_Grained_Prosody_Control)
+- [keonlee9420's Cross-Speaker-Emotion-Transfer](https://github.com/keonlee9420/Cross-Speaker-Emotion-Transfer)
 - [NVIDIA's NeMo](https://github.com/NVIDIA/NeMo): Special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.

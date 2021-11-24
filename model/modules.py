@@ -19,6 +19,8 @@ from utils.tools import (
     pad,
 )
 from .transformers.blocks import LinearNorm, ConvNorm, ConvBlock, ConvBlock2D
+from .transformers.transformer import ScaledDotProductAttention
+from .coordconv import CoordConv2d
 
 
 @jit(nopython=True)
@@ -317,6 +319,280 @@ class ProsodyPredictor(nn.Module):
         return output
 
 
+class ReferenceEncoder(nn.Module):
+    """ Reference Mel Encoder """
+
+    def __init__(self, preprocess_config, model_config):
+        super(ReferenceEncoder, self).__init__()
+
+        E = model_config["transformer"]["encoder_hidden"]
+        n_mel_channels = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
+        ref_enc_filters = model_config["prosody"]["ref_enc_filters"]
+        ref_enc_size = model_config["prosody"]["ref_enc_size"]
+        ref_enc_strides = model_config["prosody"]["ref_enc_strides"]
+        ref_enc_pad = model_config["prosody"]["ref_enc_pad"]
+        ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
+
+        self.n_mel_channels = n_mel_channels
+        K = len(ref_enc_filters)
+        filters = [1] + ref_enc_filters
+        # Use CoordConv at the first layer to better preserve positional information: https://arxiv.org/pdf/1811.02122.pdf
+        convs = [CoordConv2d(in_channels=filters[0],
+                           out_channels=filters[0 + 1],
+                           kernel_size=ref_enc_size,
+                           stride=ref_enc_strides,
+                           padding=ref_enc_pad, with_r=True)]
+        convs2 = [nn.Conv2d(in_channels=filters[i],
+                           out_channels=filters[i + 1],
+                           kernel_size=ref_enc_size,
+                           stride=ref_enc_strides,
+                           padding=ref_enc_pad) for i in range(1,K)]
+        convs.extend(convs2)
+        self.convs = nn.ModuleList(convs)
+        self.bns = nn.ModuleList(
+            [nn.BatchNorm2d(num_features=ref_enc_filters[i]) for i in range(K)])
+
+        out_channels = self.calculate_channels(n_mel_channels, 3, 2, 1, K)
+        self.gru = nn.GRU(input_size=ref_enc_filters[-1] * out_channels,
+                          hidden_size=ref_enc_gru_size,
+                          batch_first=True)
+
+    def forward(self, inputs, mask=None):
+        """
+        inputs --- [N, Ty/r, n_mels*r]
+        outputs --- [N, E//2]
+        """
+        N = inputs.size(0)
+        out = inputs.view(N, 1, -1, self.n_mel_channels)  # [N, 1, Ty, n_mels]
+        for conv, bn in zip(self.convs, self.bns):
+            out = conv(out)
+            out = bn(out)
+            out = F.relu(out)  # [N, 128, Ty//2^K, n_mels//2^K]
+
+        out = out.transpose(1, 2)  # [N, Ty//2^K, 128, n_mels//2^K]
+        T = out.size(1)
+        N = out.size(0)
+        out = out.contiguous().view(N, T, -1)  # [N, Ty//2^K, 128*n_mels//2^K]
+        if mask is not None:
+            out = out.masked_fill(mask.unsqueeze(-1), 0)
+
+        self.gru.flatten_parameters()
+        memory, out = self.gru(out)  # memory --- [N, Ty, E//2], out --- [1, N, E//2]
+
+        return memory, out.squeeze(0)
+
+    def calculate_channels(self, L, kernel_size, stride, pad, n_convs):
+        for i in range(n_convs):
+            L = (L - kernel_size + 2 * pad) // stride + 1
+        return L
+
+
+class PhonemeLevelProsodyEncoder(nn.Module):
+    """ Phoneme-level Prosody Encoder """
+
+    def __init__(self, preprocess_config, model_config):
+        super(PhonemeLevelProsodyEncoder, self).__init__()
+
+        self.E = model_config["transformer"]["encoder_hidden"]
+        self.d_q = self.d_k = model_config["transformer"]["encoder_hidden"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size"]
+        ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
+        ref_attention_dropout = model_config["prosody"]["ref_attention_dropout"]
+
+        self.encoder = ReferenceEncoder(preprocess_config, model_config)
+        self.linears = nn.ModuleList([
+            LinearNorm(in_dim, self.E, bias=False)
+            for in_dim in (self.d_q, self.d_k)
+        ])
+        self.encoder_prj = nn.Linear(ref_enc_gru_size, self.E * 2)
+        self.dropout = nn.Dropout(ref_attention_dropout)
+        self.encoder_bottleneck = nn.Linear(self.E, bottleneck_size)
+
+    def forward(self, x, text_lengths, src_mask, mels, mels_lengths, mel_mask):
+        '''
+        x --- [N, seq_len, encoder_embedding_dim]
+        mels --- [N, Ty/r, n_mels*r], r=1
+        out --- [N, seq_len, bottleneck_size]
+        attn --- [N, seq_len, ref_len], Ty/r = ref_len
+        '''
+        embedded_prosody, _ = self.encoder(mels, mel_mask)
+
+        # Bottleneck
+        embedded_prosody = self.encoder_prj(embedded_prosody)
+
+        # Obtain k and v from prosody embedding
+        k, v = torch.split(embedded_prosody, self.E, dim=-1) # [N, Ty, E] * 2
+
+        # Get attention mask
+        src_len, mel_len = x.shape[1], mels.shape[1]
+        text_mask = src_mask.unsqueeze(-1).expand(-1, -1, mel_len) # [batch, seq_len, mel_len]
+        mels_mask = mel_mask.unsqueeze(1).expand(-1, src_len, -1) # [batch, seq_len, mel_len]
+
+        # Attention
+        q, k = [linear(vector) for linear, vector in zip(self.linears, (x, k))]
+        attn = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k) # [N, seq_len, ref_len]
+        attn = attn.masked_fill(mels_mask, -np.inf)
+        attn = self.dropout(F.softmax(attn, dim=-1))
+        attn = attn.masked_fill(text_mask, 0.)
+        out = self.encoder_bottleneck(torch.bmm(attn, v)) # [N, seq_len, bottleneck_size]
+        out = out.masked_fill(src_mask.unsqueeze(-1), 0.)
+
+        return out, attn
+
+
+class STL(nn.Module):
+    """ Style Token Layer """
+
+    def __init__(self, preprocess_config, model_config):
+        super(STL, self).__init__()
+
+        num_heads = 1
+        E = model_config["transformer"]["encoder_hidden"]
+        self.token_num = model_config["prosody"]["token_num"]
+        self.embed = nn.Parameter(torch.FloatTensor(
+            self.token_num, E // num_heads))
+        d_q = E // 2
+        d_k = E // num_heads
+        self.attention = StyleEmbedAttention(
+            query_dim=d_q, key_dim=d_k, num_units=E, num_heads=num_heads)
+
+        torch.nn.init.normal_(self.embed, mean=0, std=0.5)
+
+    def forward(self, inputs):
+        N = inputs.size(0)
+        query = inputs.unsqueeze(1)  # [N, 1, E//2]
+
+        keys_soft = torch.tanh(self.embed).unsqueeze(0).expand(
+            N, -1, -1)  # [N, token_num, E // num_heads]
+
+        # Weighted sum
+        emotion_embed_soft = self.attention(query, keys_soft)
+
+        return emotion_embed_soft
+
+
+class StyleEmbedAttention(nn.Module):
+    """ StyleEmbedAttention """
+
+    def __init__(self, query_dim, key_dim, num_units, num_heads):
+        super(StyleEmbedAttention, self).__init__()
+        self.num_units = num_units
+        self.num_heads = num_heads
+        self.key_dim = key_dim
+
+        self.W_query = nn.Linear(
+            in_features=query_dim, out_features=num_units, bias=False)
+        self.W_key = nn.Linear(in_features=key_dim,
+                               out_features=num_units, bias=False)
+        self.W_value = nn.Linear(
+            in_features=key_dim, out_features=num_units, bias=False)
+
+    def forward(self, query, key_soft):
+        """
+        input:
+            query --- [N, T_q, query_dim]
+            key_soft --- [N, T_k, key_dim]
+        output:
+            out --- [N, T_q, num_units]
+        """
+        values = self.W_value(key_soft)
+        split_size = self.num_units // self.num_heads
+        values = torch.stack(torch.split(values, split_size, dim=2), dim=0)
+
+        out_soft = scores_soft = None
+        querys = self.W_query(query)  # [N, T_q, num_units]
+        keys = self.W_key(key_soft)  # [N, T_k, num_units]
+
+        # [h, N, T_q, num_units/h]
+        querys = torch.stack(torch.split(querys, split_size, dim=2), dim=0)
+        # [h, N, T_k, num_units/h]
+        keys = torch.stack(torch.split(keys, split_size, dim=2), dim=0)
+        # [h, N, T_k, num_units/h]
+
+        # score = softmax(QK^T / (d_k ** 0.5))
+        scores_soft = torch.matmul(
+            querys, keys.transpose(2, 3))  # [h, N, T_q, T_k]
+        scores_soft = scores_soft / (self.key_dim ** 0.5)
+        scores_soft = F.softmax(scores_soft, dim=3)
+
+        # out = score * V
+        # [h, N, T_q, num_units/h]
+        out_soft = torch.matmul(scores_soft, values)
+        out_soft = torch.cat(torch.split(out_soft, 1, dim=0), dim=3).squeeze(
+            0)  # [N, T_q, num_units]
+
+        return out_soft #, scores_soft
+
+
+class UtteranceLevelProsodyEncoder(nn.Module):
+    """ Utterance-level Prosody Encoder """
+
+    def __init__(self, preprocess_config, model_config):
+        super(UtteranceLevelProsodyEncoder, self).__init__()
+
+        self.E = model_config["transformer"]["encoder_hidden"]
+        self.d_q = self.d_k = model_config["transformer"]["encoder_hidden"]
+        ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
+        ref_attention_dropout = model_config["prosody"]["ref_attention_dropout"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size"]
+
+        self.encoder = ReferenceEncoder(preprocess_config, model_config)
+        self.encoder_prj = nn.Linear(ref_enc_gru_size, self.E // 2)
+        self.stl = STL(preprocess_config, model_config)
+        self.encoder_bottleneck = nn.Linear(self.E, bottleneck_size)
+        self.dropout = nn.Dropout(ref_attention_dropout)
+
+    def forward(self, mels, mel_mask):
+        '''
+        mels --- [N, Ty/r, n_mels*r], r=1
+        out --- [N, seq_len, E]
+        '''
+        _, embedded_prosody = self.encoder(mels, mel_mask)
+
+        # Bottleneck
+        embedded_prosody = self.encoder_prj(embedded_prosody)
+
+        # Style Token
+        out = self.encoder_bottleneck(self.stl(embedded_prosody))
+        out = self.dropout(out)
+
+        return out
+
+
+class ParallelProsodyPredictor(nn.Module):
+    """ Parallel Prosody Predictor """
+
+    def __init__(self, model_config, phoneme_level=True):
+        super(ParallelProsodyPredictor, self).__init__()
+
+        self.E = model_config["transformer"]["encoder_hidden"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size"]
+        self.phoneme_level = phoneme_level
+        self.gru = nn.GRU(input_size=self.E,
+                          hidden_size=self.E//2,
+                          batch_first=True,
+                          bidirectional=True,)
+        self.predictor_bottleneck = nn.Linear(self.E, bottleneck_size)
+
+    def forward(self, x):
+        """
+        x --- [N, src_len, hidden]
+        """
+        self.gru.flatten_parameters()
+        memory, out = self.gru(x)
+
+        if self.phoneme_level:
+            pv_forward = memory[:, :, :self.E//2]
+            pv_backward = memory[:, :, self.E//2:]
+            prosody_vector = torch.cat((pv_forward, pv_backward), dim=-1)
+        else:
+            out = out.transpose(0, 1)
+            prosody_vector = torch.cat((out[:, 0], out[:, 1]), dim=-1).unsqueeze(1)
+        prosody_vector = self.predictor_bottleneck(prosody_vector)
+
+        return prosody_vector
+
+
 class VarianceAdaptor(nn.Module):
     """ Variance Adaptor """
 
@@ -340,6 +616,7 @@ class VarianceAdaptor(nn.Module):
 
         self.learn_prosody = model_config["learn_prosody"]
         self.learn_mixture = model_config["prosody"]["learn_mixture"]
+        self.learn_implicit = model_config["prosody"]["learn_implicit"]
         if self.learn_prosody:
             if self.learn_mixture:
                 assert not self.learn_alignment
@@ -355,6 +632,19 @@ class VarianceAdaptor(nn.Module):
                     dropout=model_config["prosody"]["predictor_dropout"],
                 )
                 self.prosody_linear = LinearNorm(2 * d_model, d_model)
+            if self.learn_implicit:
+                self.utterance_prosody_encoder = UtteranceLevelProsodyEncoder(
+                    preprocess_config, model_config)
+                self.phoneme_prosody_encoder = PhonemeLevelProsodyEncoder(
+                    preprocess_config, model_config)
+                self.utterance_prosody_predictor = ParallelProsodyPredictor(
+                    model_config, phoneme_level=False)
+                self.phoneme_prosody_predictor = ParallelProsodyPredictor(
+                    model_config, phoneme_level=True)
+                self.phoneme_prosody_prj = nn.Linear(
+                    model_config["prosody"]["bottleneck_size"], model_config["transformer"]["encoder_hidden"])
+                self.utterance_prosody_prj = nn.Linear(
+                    model_config["prosody"]["bottleneck_size"], model_config["transformer"]["encoder_hidden"])
 
         pitch_level_tag, energy_level_tag, self.pitch_feature_level, self.energy_feature_level = \
                                     get_variance_level(preprocess_config, model_config, data_loading=False)
@@ -511,7 +801,7 @@ class VarianceAdaptor(nn.Module):
 
         prosody_info = None
         if self.learn_prosody:
-            # GMM-MDN for Phone-Level Prosody Modelling
+            # GMM-MDN for Phone-Level Prosody Modeling
             if self.learn_mixture and not self.learn_alignment:
                 w, sigma, mu = self.prosody_predictor(text, src_mask)
 
@@ -521,6 +811,31 @@ class VarianceAdaptor(nn.Module):
                     prosody_embeddings = self.prosody_predictor.sample(w, sigma, mu)
                 x = x + self.prosody_linear(prosody_embeddings)
                 prosody_info = (w, sigma, mu, prosody_embeddings)
+
+            # Implicit Prosody Modeling
+            elif self.learn_implicit:
+                utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
+                phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
+                print("phoneme_prosody_embeddings:", phoneme_prosody_embeddings)
+                print("utterance_prosody_embeddings.shape:", utterance_prosody_embeddings.shape)
+                print("phoneme_prosody_embeddings.shape, phoneme_prosody_attn.shape:", phoneme_prosody_embeddings.shape, phoneme_prosody_attn.shape)
+
+                utterance_prosody_vectors = self.utterance_prosody_predictor(x)
+                x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
+                        self.utterance_prosody_prj(utterance_prosody_vectors))
+                phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
+                x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
+                        self.phoneme_prosody_prj(phoneme_prosody_vectors))
+                print("phoneme_prosody_vectors.shape, utterance_prosody_vectors.shape:", phoneme_prosody_vectors.shape, utterance_prosody_vectors.shape)
+                prosody_info = (
+                    utterance_prosody_embeddings,
+                    phoneme_prosody_embeddings,
+                    utterance_prosody_vectors,
+                    phoneme_prosody_vectors,
+                    phoneme_prosody_attn,
+                )
+                print("x.shape:", x.shape)
+                exit(0)
 
         log_duration_prediction = self.duration_predictor(x, src_mask)
         duration_rounded = torch.clamp(
