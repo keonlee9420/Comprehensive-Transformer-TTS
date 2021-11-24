@@ -17,6 +17,7 @@ class CompTransTTSLoss(nn.Module):
         ]
         self.learn_prosody = model_config["learn_prosody"]
         self.learn_mixture = model_config["prosody"]["learn_mixture"]
+        self.learn_implicit = model_config["prosody"]["learn_implicit"]
         self.learn_alignment = model_config["duration_modeling"]["learn_alignment"]
         self.binarization_loss_enable_steps = train_config["duration"]["binarization_loss_enable_steps"]
         self.binarization_loss_warmup_steps = train_config["duration"]["binarization_loss_warmup_steps"]
@@ -160,14 +161,19 @@ class CompTransTTSLoss(nn.Module):
                 bin_loss_weight = min((step-self.binarization_loss_enable_steps) / self.binarization_loss_warmup_steps, 1.0) * 1.0
             bin_loss = self.bin_loss(hard_attention=attn_hard, soft_attention=attn_soft) * bin_loss_weight
 
-        mdn_loss = torch.zeros(1).to(mel_targets.device)
+        prosody_loss = torch.zeros(1).to(mel_targets.device)
         if self.learn_prosody:
             if self.training and self.learn_mixture:
                 w, sigma, mu, prosody_embeddings = prosody_info
-                mdn_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
+                prosody_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
+            elif self.learn_implicit:
+                up_tgt, pp_tgt, up_vec, pp_vec, _ = prosody_info
+                prosody_loss = self.mae_loss(up_tgt, up_vec)
+                prosody_loss += self.mae_loss(
+                    pp_tgt.masked_select(src_masks.unsqueeze(-1)), pp_vec.masked_select(src_masks.unsqueeze(-1)))
 
         total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + ctc_loss + bin_loss + mdn_loss
+            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + ctc_loss + bin_loss + prosody_loss
         )
 
         return (
@@ -179,7 +185,7 @@ class CompTransTTSLoss(nn.Module):
             duration_loss,
             ctc_loss,
             bin_loss,
-            mdn_loss,
+            prosody_loss,
         )
 
 

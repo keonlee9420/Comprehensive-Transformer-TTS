@@ -50,7 +50,7 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, len_losses
 
     loss_means = [loss_sum / len(dataset) for loss_sum in loss_sums]
 
-    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, CTC Loss: {:.4f}, Binarization Loss: {:.4f}, GMM-MDN Loss: {:.4f}".format(
+    message = "Validation Step {}, Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, CTC Loss: {:.4f}, Binarization Loss: {:.4f}, Prosody Loss: {:.4f}".format(
         *([step] + [l for l in loss_means])
     )
 

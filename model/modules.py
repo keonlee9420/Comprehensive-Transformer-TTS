@@ -801,7 +801,7 @@ class VarianceAdaptor(nn.Module):
 
         prosody_info = None
         if self.learn_prosody:
-            # GMM-MDN for Phone-Level Prosody Modeling
+            # GMM-MDN for Phone-Level Prosody Modeling (Du et al., 2021)
             if self.learn_mixture and not self.learn_alignment:
                 w, sigma, mu = self.prosody_predictor(text, src_mask)
 
@@ -812,13 +812,10 @@ class VarianceAdaptor(nn.Module):
                 x = x + self.prosody_linear(prosody_embeddings)
                 prosody_info = (w, sigma, mu, prosody_embeddings)
 
-            # Implicit Prosody Modeling
+            # Implicit Prosody Modeling (Liu et al., 2021)
             elif self.learn_implicit:
                 utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
                 phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
-                print("phoneme_prosody_embeddings:", phoneme_prosody_embeddings)
-                print("utterance_prosody_embeddings.shape:", utterance_prosody_embeddings.shape)
-                print("phoneme_prosody_embeddings.shape, phoneme_prosody_attn.shape:", phoneme_prosody_embeddings.shape, phoneme_prosody_attn.shape)
 
                 utterance_prosody_vectors = self.utterance_prosody_predictor(x)
                 x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
@@ -826,7 +823,6 @@ class VarianceAdaptor(nn.Module):
                 phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
                 x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
                         self.phoneme_prosody_prj(phoneme_prosody_vectors))
-                print("phoneme_prosody_vectors.shape, utterance_prosody_vectors.shape:", phoneme_prosody_vectors.shape, utterance_prosody_vectors.shape)
                 prosody_info = (
                     utterance_prosody_embeddings,
                     phoneme_prosody_embeddings,
@@ -834,8 +830,6 @@ class VarianceAdaptor(nn.Module):
                     phoneme_prosody_vectors,
                     phoneme_prosody_attn,
                 )
-                print("x.shape:", x.shape)
-                exit(0)
 
         log_duration_prediction = self.duration_predictor(x, src_mask)
         duration_rounded = torch.clamp(
