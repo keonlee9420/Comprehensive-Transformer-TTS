@@ -814,8 +814,10 @@ class VarianceAdaptor(nn.Module):
 
             # Implicit Prosody Modeling (Liu et al., 2021)
             elif self.learn_implicit:
-                utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
-                phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
+                utterance_prosody_embeddings = phoneme_prosody_embeddings = phoneme_prosody_attn = None
+                if self.training:
+                    utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
+                    phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
 
                 utterance_prosody_vectors = self.utterance_prosody_predictor(x)
                 x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else

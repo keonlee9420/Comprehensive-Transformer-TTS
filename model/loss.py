@@ -166,7 +166,7 @@ class CompTransTTSLoss(nn.Module):
             if self.training and self.learn_mixture:
                 w, sigma, mu, prosody_embeddings = prosody_info
                 prosody_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
-            elif self.learn_implicit:
+            elif self.training and self.learn_implicit:
                 up_tgt, pp_tgt, up_vec, pp_vec, _ = prosody_info
                 prosody_loss = self.mae_loss(up_tgt, up_vec)
                 prosody_loss += self.mae_loss(
