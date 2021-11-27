@@ -234,6 +234,10 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
             ["Soft Attention", "Hard Attention", "Prior"]
         )
 
+    phoneme_prosody_attn = None
+    if model_config["learn_prosody"] and model_config["prosody"]["learn_implicit"]:
+        phoneme_prosody_attn = predictions[11][-1][0][:src_len, :mel_len].detach()
+
     if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
         pitch = targets[9][0, :src_len].float().detach().cpu().numpy()
         pitch = expand(pitch, duration)
@@ -255,9 +259,11 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         [
             (mel_prediction.cpu().numpy(), pitch, energy),
             (mel_target.cpu().numpy(), pitch, energy),
+            phoneme_prosody_attn.cpu().numpy(),
         ],
         stats,
         ["Synthetized Spectrogram", "Ground-Truth Spectrogram"],
+        n_attn=1,
     )
 
     if vocoder is not None:
@@ -340,10 +346,40 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
             sampling_rate, wav)
 
 
-def plot_mel(data, stats, titles, save_dir=None):
+def plot_mel(data, stats, titles, n_attn=0, save_dir=None):
+    assert len(data) >= 3, "data size must be greater or equal to 2"
     fig, axes = plt.subplots(len(data), 1, squeeze=False)
     if titles is None:
         titles = [None for i in range(len(data))]
+
+    if n_attn > 0:
+        # Plot Mel Spectrogram
+        plot_mel_(fig, axes, data[:-n_attn], stats, titles)
+
+        # Plot Alignment
+        xlim = data[0][0].shape[1]
+        for i in range(-n_attn, 0):
+            im = axes[i][0].imshow(data[i], origin='lower', aspect='auto')
+            axes[i][0].set_xlabel('Decoder timestep')
+            axes[i][0].set_ylabel('Encoder timestep')
+            axes[i][0].set_xlim(0, xlim)
+            axes[i][0].set_title(titles[i], fontsize="medium")
+            axes[i][0].tick_params(labelsize="x-small")
+            axes[i][0].set_anchor("W")
+            fig.colorbar(im, ax=axes[i][0])
+    else:
+        # Plot Mel Spectrogram
+        plot_mel_(fig, axes, data, stats, titles)
+
+    fig.canvas.draw()
+    data = save_figure_to_numpy(fig)
+    if save_dir is not None:
+        plt.savefig(save_dir)
+    plt.close()
+    return data
+
+
+def plot_mel_(fig, axes, data, stats, titles):
     pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
     pitch_min = pitch_min * pitch_std + pitch_mean
     pitch_max = pitch_max * pitch_std + pitch_mean
@@ -388,13 +424,6 @@ def plot_mel(data, stats, titles, save_dir=None):
             right=True,
             labelright=True,
         )
-
-    fig.canvas.draw()
-    data = save_figure_to_numpy(fig)
-    if save_dir is not None:
-        plt.savefig(save_dir)
-    plt.close()
-    return data
 
 
 # def plot_single_alignment(alignment, info=None, save_dir=None):
