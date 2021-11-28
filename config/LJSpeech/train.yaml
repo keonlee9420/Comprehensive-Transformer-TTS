@@ -4,9 +4,9 @@ dist_config:
   dist_url: "tcp://localhost:54321"
   world_size: 1
 path:
-  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_pp_no_prosody_loss"
-  log_path: "./output/log/LJSpeech_delightfultts_pp_no_prosody_loss"
-  result_path: "./output/result/LJSpeech_delightfultts_pp_no_prosody_loss"
+  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_up_no_prosody_loss"
+  log_path: "./output/log/LJSpeech_delightfultts_up_no_prosody_loss"
+  result_path: "./output/result/LJSpeech_delightfultts_up_no_prosody_loss"
 optimizer:
   batch_size: 8
   betas: [0.9, 0.98]
