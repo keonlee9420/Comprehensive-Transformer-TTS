@@ -822,8 +822,9 @@ class VarianceAdaptor(nn.Module):
                 # x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
                 #         self.utterance_prosody_prj(utterance_prosody_vectors))
                 phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
-                x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
-                        self.phoneme_prosody_prj(phoneme_prosody_vectors))
+                x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings)
+                # x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
+                #         self.phoneme_prosody_prj(phoneme_prosody_vectors))
                 prosody_info = (
                     utterance_prosody_embeddings,
                     phoneme_prosody_embeddings,
