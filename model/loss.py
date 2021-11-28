@@ -168,10 +168,10 @@ class CompTransTTSLoss(nn.Module):
                 prosody_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
             elif self.training and self.learn_implicit:
                 up_tgt, pp_tgt, up_vec, pp_vec, _ = prosody_info
-                prosody_loss = self.mae_loss(up_tgt.detach(), up_vec)
+                prosody_loss = self.mae_loss(up_tgt, up_vec)
                 # prosody_loss = self.mae_loss(
                 prosody_loss += self.mae_loss(
-                    pp_tgt.detach().masked_select(src_masks.unsqueeze(-1)), pp_vec.masked_select(src_masks.unsqueeze(-1)))
+                    pp_tgt.masked_select(src_masks.unsqueeze(-1)), pp_vec.masked_select(src_masks.unsqueeze(-1)))
 
         total_loss = (
             mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + ctc_loss + bin_loss + prosody_loss
