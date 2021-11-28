@@ -565,51 +565,52 @@ class ParallelProsodyPredictor(nn.Module):
     def __init__(self, model_config, phoneme_level=True):
         super(ParallelProsodyPredictor, self).__init__()
 
+        self.phoneme_level = phoneme_level
         self.E = model_config["transformer"]["encoder_hidden"]
+        self.input_size = self.E
+        self.filter_size = self.E
+        self.conv_output_size = self.E
+        self.kernel = model_config["prosody"]["predictor_kernel_size"]
+        self.dropout = model_config["prosody"]["predictor_dropout"]
         bottleneck_size = model_config["prosody"]["bottleneck_size_p"] if phoneme_level else\
                           model_config["prosody"]["bottleneck_size_u"]
-        self.phoneme_level = phoneme_level
-        # self.input_size = self.E
-        # self.filter_size = self.E
-        # self.conv_output_size = self.E
-        # self.kernel = model_config["prosody"]["predictor_kernel_size"]
-        # self.dropout = model_config["prosody"]["predictor_dropout"]
-        # self.conv_layer = nn.Sequential(
-        #     OrderedDict(
-        #         [
-        #             (
-        #                 "conv1d_1",
-        #                 ConvNorm(
-        #                     self.input_size,
-        #                     self.filter_size,
-        #                     kernel_size=self.kernel,
-        #                     stride=1,
-        #                     padding=(self.kernel - 1) // 2,
-        #                     dilation=1,
-        #                     transpose=True,
-        #                 ),
-        #             ),
-        #             ("relu_1", nn.ReLU()),
-        #             ("layer_norm_1", nn.LayerNorm(self.filter_size)),
-        #             ("dropout_1", nn.Dropout(self.dropout)),
-        #             (
-        #                 "conv1d_2",
-        #                 ConvNorm(
-        #                     self.filter_size,
-        #                     self.filter_size,
-        #                     kernel_size=self.kernel,
-        #                     stride=1,
-        #                     padding=1,
-        #                     dilation=1,
-        #                     transpose=True,
-        #                 ),
-        #             ),
-        #             ("relu_2", nn.ReLU()),
-        #             ("layer_norm_2", nn.LayerNorm(self.filter_size)),
-        #             ("dropout_2", nn.Dropout(self.dropout)),
-        #         ]
-        #     )
-        # )
+
+        self.conv_layer = nn.Sequential(
+            OrderedDict(
+                [
+                    (
+                        "conv1d_1",
+                        ConvNorm(
+                            self.input_size,
+                            self.filter_size,
+                            kernel_size=self.kernel,
+                            stride=1,
+                            padding=(self.kernel - 1) // 2,
+                            dilation=1,
+                            transpose=True,
+                        ),
+                    ),
+                    ("relu_1", nn.ReLU()),
+                    ("layer_norm_1", nn.LayerNorm(self.filter_size)),
+                    ("dropout_1", nn.Dropout(self.dropout)),
+                    (
+                        "conv1d_2",
+                        ConvNorm(
+                            self.filter_size,
+                            self.filter_size,
+                            kernel_size=self.kernel,
+                            stride=1,
+                            padding=1,
+                            dilation=1,
+                            transpose=True,
+                        ),
+                    ),
+                    ("relu_2", nn.ReLU()),
+                    ("layer_norm_2", nn.LayerNorm(self.filter_size)),
+                    ("dropout_2", nn.Dropout(self.dropout)),
+                ]
+            )
+        )
         self.gru = nn.GRU(input_size=self.E,
                           hidden_size=self.E//2,
                           batch_first=True,
@@ -620,7 +621,7 @@ class ParallelProsodyPredictor(nn.Module):
         """
         x --- [N, src_len, hidden]
         """
-        # x = self.conv_layer(x)
+        x = self.conv_layer(x)
 
         self.gru.flatten_parameters()
         memory, out = self.gru(x)
@@ -862,14 +863,14 @@ class VarianceAdaptor(nn.Module):
                 utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
                 phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
 
-                # utterance_prosody_vectors = self.utterance_prosody_predictor(x)
-                x = x + self.utterance_prosody_prj(utterance_prosody_embeddings)
-                # x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
-                #         self.utterance_prosody_prj(utterance_prosody_vectors))
-                # phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
-                x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings)
-                # x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
-                #         self.phoneme_prosody_prj(phoneme_prosody_vectors))
+                # x = x + self.utterance_prosody_prj(utterance_prosody_embeddings)
+                # x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings)
+                utterance_prosody_vectors = self.utterance_prosody_predictor(x)
+                x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
+                        self.utterance_prosody_prj(utterance_prosody_vectors))
+                phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
+                x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
+                        self.phoneme_prosody_prj(phoneme_prosody_vectors))
                 prosody_info = (
                     utterance_prosody_embeddings,
                     phoneme_prosody_embeddings,
