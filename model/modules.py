@@ -395,7 +395,7 @@ class PhonemeLevelProsodyEncoder(nn.Module):
 
         self.E = model_config["transformer"]["encoder_hidden"]
         self.d_q = self.d_k = model_config["transformer"]["encoder_hidden"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size_p"]
         ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
         ref_attention_dropout = model_config["prosody"]["ref_attention_dropout"]
 
@@ -534,7 +534,7 @@ class UtteranceLevelProsodyEncoder(nn.Module):
         self.d_q = self.d_k = model_config["transformer"]["encoder_hidden"]
         ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
         ref_attention_dropout = model_config["prosody"]["ref_attention_dropout"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size_u"]
 
         self.encoder = ReferenceEncoder(preprocess_config, model_config)
         self.encoder_prj = nn.Linear(ref_enc_gru_size, self.E // 2)
@@ -566,8 +566,50 @@ class ParallelProsodyPredictor(nn.Module):
         super(ParallelProsodyPredictor, self).__init__()
 
         self.E = model_config["transformer"]["encoder_hidden"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size_p"] if phoneme_level else\
+                          model_config["prosody"]["bottleneck_size_u"]
         self.phoneme_level = phoneme_level
+        # self.input_size = self.E
+        # self.filter_size = self.E
+        # self.conv_output_size = self.E
+        # self.kernel = model_config["prosody"]["predictor_kernel_size"]
+        # self.dropout = model_config["prosody"]["predictor_dropout"]
+        # self.conv_layer = nn.Sequential(
+        #     OrderedDict(
+        #         [
+        #             (
+        #                 "conv1d_1",
+        #                 ConvNorm(
+        #                     self.input_size,
+        #                     self.filter_size,
+        #                     kernel_size=self.kernel,
+        #                     stride=1,
+        #                     padding=(self.kernel - 1) // 2,
+        #                     dilation=1,
+        #                     transpose=True,
+        #                 ),
+        #             ),
+        #             ("relu_1", nn.ReLU()),
+        #             ("layer_norm_1", nn.LayerNorm(self.filter_size)),
+        #             ("dropout_1", nn.Dropout(self.dropout)),
+        #             (
+        #                 "conv1d_2",
+        #                 ConvNorm(
+        #                     self.filter_size,
+        #                     self.filter_size,
+        #                     kernel_size=self.kernel,
+        #                     stride=1,
+        #                     padding=1,
+        #                     dilation=1,
+        #                     transpose=True,
+        #                 ),
+        #             ),
+        #             ("relu_2", nn.ReLU()),
+        #             ("layer_norm_2", nn.LayerNorm(self.filter_size)),
+        #             ("dropout_2", nn.Dropout(self.dropout)),
+        #         ]
+        #     )
+        # )
         self.gru = nn.GRU(input_size=self.E,
                           hidden_size=self.E//2,
                           batch_first=True,
@@ -578,6 +620,8 @@ class ParallelProsodyPredictor(nn.Module):
         """
         x --- [N, src_len, hidden]
         """
+        # x = self.conv_layer(x)
+
         self.gru.flatten_parameters()
         memory, out = self.gru(x)
 
@@ -641,10 +685,10 @@ class VarianceAdaptor(nn.Module):
                     model_config, phoneme_level=False)
                 self.phoneme_prosody_predictor = ParallelProsodyPredictor(
                     model_config, phoneme_level=True)
-                self.phoneme_prosody_prj = nn.Linear(
-                    model_config["prosody"]["bottleneck_size"], model_config["transformer"]["encoder_hidden"])
                 self.utterance_prosody_prj = nn.Linear(
-                    model_config["prosody"]["bottleneck_size"], model_config["transformer"]["encoder_hidden"])
+                    model_config["prosody"]["bottleneck_size_u"], model_config["transformer"]["encoder_hidden"])
+                self.phoneme_prosody_prj = nn.Linear(
+                    model_config["prosody"]["bottleneck_size_p"], model_config["transformer"]["encoder_hidden"])
 
         pitch_level_tag, energy_level_tag, self.pitch_feature_level, self.energy_feature_level = \
                                     get_variance_level(preprocess_config, model_config, data_loading=False)

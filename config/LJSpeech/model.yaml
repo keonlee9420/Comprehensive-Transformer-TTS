@@ -14,8 +14,9 @@ prosody:
   predictor_dropout: 0.2
 
   # Liu et al., 2021
-  learn_implicit: True
-  bottleneck_size: 64
+  learn_implicit: True # This is only tested under supervised duration modeling (learn_alignment: False)
+  bottleneck_size_u: 256
+  bottleneck_size_p: 4
   ref_enc_filters: [32, 32, 64, 64, 128, 128]
   ref_enc_size: [3, 3]
   ref_enc_strides: [1, 2] # '1' is to keep the sequence length
@@ -23,6 +24,8 @@ prosody:
   ref_enc_gru_size: 32
   ref_attention_dropout: 0.2
   token_num: 32
+  predictor_kernel_size: 3
+  predictor_dropout: 0.5
 
 transformer:
   encoder_layer: 4
