@@ -638,6 +638,81 @@ class ParallelProsodyPredictor(nn.Module):
         return prosody_vector
 
 
+class NonParallelProsodyPredictor(nn.Module):
+    """ Non-parallel Prosody Predictor inspired by Du et al., 2021 """
+
+    def __init__(self, model_config, phoneme_level=True):
+        super(NonParallelProsodyPredictor, self).__init__()
+
+        self.phoneme_level = phoneme_level
+        # self.E = model_config["transformer"]["encoder_hidden"]
+        self.d_model = model_config["transformer"]["encoder_hidden"]
+        kernel_size = model_config["prosody"]["predictor_kernel_size"]
+        dropout = model_config["prosody"]["predictor_dropout"]
+        bottleneck_size = model_config["prosody"]["bottleneck_size_p"] if phoneme_level else\
+                          model_config["prosody"]["bottleneck_size_u"]
+        self.conv_stack = nn.ModuleList(
+            [
+                ConvBlock(
+                    in_channels=self.d_model,
+                    out_channels=self.d_model,
+                    kernel_size=kernel_size[i],
+                    dropout=dropout,
+                    normalization=nn.LayerNorm,
+                    transpose=True,
+                )
+                for i in range(2)
+            ]
+        )
+        self.gru_cell = nn.GRUCell(
+            self.d_model + 2 * self.d_model,
+            2 * self.d_model,
+        )
+        self.predictor_bottleneck = nn.Linear(2 * self.d_model, bottleneck_size)
+
+    def init_state(self, x):
+        """
+        x -- [B, src_len, d_model]
+        p_0 -- [B, 2 * d_model]
+        self.gru_hidden -- [B, 2 * d_model]
+        """
+        B, _, d_model = x.shape
+        p_0 = torch.zeros((B, 2 * d_model), device=x.device, requires_grad=True)
+        self.gru_hidden = torch.zeros((B, 2 * d_model), device=x.device, requires_grad=True)
+        return p_0
+
+    def forward(self, h_text, mask=None):
+        """
+        h_text -- [B, src_len, d_model]
+        mask -- [B, src_len]
+        outputs -- [B, src_len, 2 * d_model]
+        """
+        x = h_text
+        for conv_layer in self.conv_stack:
+            x = conv_layer(x, mask=mask)
+
+        # Autoregressive Prediction
+        p_0 = self.init_state(x)
+
+        outputs = [p_0]
+        for i in range(x.shape[1]):
+            p_input = torch.cat((x[:, i], outputs[-1]), dim=-1) # [B, 3 * d_model]
+            self.gru_hidden = self.gru_cell(p_input, self.gru_hidden) # [B, 2 * d_model]
+            outputs.append(self.gru_hidden)
+        outputs = torch.stack(outputs[1:], dim=1) # [B, src_len, 2 * d_model]
+
+        if mask is not None:
+            outputs = outputs.masked_fill(mask, 0.0)
+
+        if self.phoneme_level:
+            prosody_vector = outputs # [B, src_len, 2 * d_model]
+        else:
+            prosody_vector = torch.mean(outputs, dim=1, keepdim=True) # [B, 1, 2 * d_model]
+        prosody_vector = self.predictor_bottleneck(prosody_vector)
+
+        return prosody_vector
+
+
 class VarianceAdaptor(nn.Module):
     """ Variance Adaptor """
 
@@ -682,10 +757,14 @@ class VarianceAdaptor(nn.Module):
                     preprocess_config, model_config)
                 self.phoneme_prosody_encoder = PhonemeLevelProsodyEncoder(
                     preprocess_config, model_config)
-                self.utterance_prosody_predictor = ParallelProsodyPredictor(
+                self.utterance_prosody_predictor = NonParallelProsodyPredictor(
                     model_config, phoneme_level=False)
-                self.phoneme_prosody_predictor = ParallelProsodyPredictor(
+                self.phoneme_prosody_predictor = NonParallelProsodyPredictor(
                     model_config, phoneme_level=True)
+                # self.utterance_prosody_predictor = ParallelProsodyPredictor(
+                #     model_config, phoneme_level=False)
+                # self.phoneme_prosody_predictor = ParallelProsodyPredictor(
+                #     model_config, phoneme_level=True)
                 self.utterance_prosody_prj = nn.Linear(
                     model_config["prosody"]["bottleneck_size_u"], model_config["transformer"]["encoder_hidden"])
                 self.phoneme_prosody_prj = nn.Linear(

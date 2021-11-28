@@ -4,9 +4,9 @@ dist_config:
   dist_url: "tcp://localhost:54321"
   world_size: 1
 path:
-  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_aug_pred"
-  log_path: "./output/log/LJSpeech_delightfultts_aug_pred"
-  result_path: "./output/result/LJSpeech_delightfultts_aug_pred"
+  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_aug_pred_ar"
+  log_path: "./output/log/LJSpeech_delightfultts_aug_pred_ar"
+  result_path: "./output/result/LJSpeech_delightfultts_aug_pred_ar"
 optimizer:
   batch_size: 8
   betas: [0.9, 0.98]

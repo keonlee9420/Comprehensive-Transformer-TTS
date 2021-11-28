@@ -24,7 +24,7 @@ prosody:
   ref_enc_gru_size: 32
   ref_attention_dropout: 0.
   token_num: 32
-  predictor_kernel_size: 3
+  predictor_kernel_size: [9, 5] # [9, 5] for non-parallel predictor / 3 for parallel predictor
   predictor_dropout: 0.5
 
 transformer:
