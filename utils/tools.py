@@ -262,7 +262,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
             phoneme_prosody_attn.cpu().numpy(),
         ],
         stats,
-        ["Synthetized Spectrogram", "Ground-Truth Spectrogram"],
+        ["Synthetized Spectrogram", "Ground-Truth Spectrogram", "Prosody Alignment"],
         n_attn=1,
     )
 
@@ -379,10 +379,12 @@ def plot_mel(data, stats, titles, n_attn=0, save_dir=None):
     return data
 
 
-def plot_mel_(fig, axes, data, stats, titles):
+def plot_mel_(fig, axes, data, stats, titles, tight_layout=True):
     pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
     pitch_min = pitch_min * pitch_std + pitch_mean
     pitch_max = pitch_max * pitch_std + pitch_mean
+    if tight_layout:
+        fig.tight_layout()
 
     def add_axis(fig, old_ax):
         ax = fig.add_axes(old_ax.get_position(), anchor="W")
