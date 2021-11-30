@@ -347,7 +347,6 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
 
 
 def plot_mel(data, stats, titles, n_attn=0, save_dir=None):
-    assert len(data) >= 3, "data size must be greater or equal to 2"
     fig, axes = plt.subplots(len(data), 1, squeeze=False)
     if titles is None:
         titles = [None for i in range(len(data))]
