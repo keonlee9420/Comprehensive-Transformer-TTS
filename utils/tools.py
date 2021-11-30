@@ -235,7 +235,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         )
 
     phoneme_prosody_attn = None
-    if model_config["learn_prosody"] and model_config["prosody"]["learn_implicit"]:
+    if predictions[11][-1] is not None and model_config["learn_prosody"] and model_config["prosody"]["learn_implicit"]:
         phoneme_prosody_attn = predictions[11][-1][0][:src_len, :mel_len].detach()
 
     if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
@@ -259,11 +259,11 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         [
             (mel_prediction.cpu().numpy(), pitch, energy),
             (mel_target.cpu().numpy(), pitch, energy),
-            phoneme_prosody_attn.cpu().numpy(),
+            phoneme_prosody_attn.cpu().numpy() if phoneme_prosody_attn is not None else None,
         ],
         stats,
         ["Synthetized Spectrogram", "Ground-Truth Spectrogram", "Prosody Alignment"],
-        n_attn=1,
+        n_attn=1 if phoneme_prosody_attn is not None else 0,
     )
 
     if vocoder is not None:
