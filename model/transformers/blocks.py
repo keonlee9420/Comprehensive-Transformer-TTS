@@ -97,7 +97,7 @@ class ConvBlock(nn.Module):
             enc_input = enc_input.contiguous().transpose(1, 2)
         enc_output = self.conv_layer(enc_input)
         if self.dropout is not None:
-            enc_output = F.dropout(enc_output, self.dropout, self.training)
+            enc_output = F.dropout(enc_output, self.dropout, training=True) # self.training)
 
         if not self.transpose:
             enc_output = enc_output.contiguous().transpose(1, 2)
