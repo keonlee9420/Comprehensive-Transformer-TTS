@@ -22,6 +22,7 @@ class CompTransTTSLoss(nn.Module):
         self.binarization_loss_enable_steps = train_config["duration"]["binarization_loss_enable_steps"]
         self.binarization_loss_warmup_steps = train_config["duration"]["binarization_loss_warmup_steps"]
         self.gmm_mdn_beta = train_config["prosody"]["gmm_mdn_beta"]
+        self.prosody_loss_enable_steps = train_config["prosody"]["prosody_loss_enable_steps"]
         self.sum_loss = ForwardSumLoss()
         self.bin_loss = BinLoss()
         self.mse_loss = nn.MSELoss()
@@ -166,7 +167,7 @@ class CompTransTTSLoss(nn.Module):
 
         prosody_loss = torch.zeros(1).to(mel_targets.device)
         if self.learn_prosody:
-            if self.training and self.learn_mixture:
+            if self.training and self.learn_mixture and step > self.prosody_loss_enable_steps:
                 w, sigma, mu, prosody_embeddings = prosody_info
                 prosody_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
             elif self.training and self.learn_implicit:

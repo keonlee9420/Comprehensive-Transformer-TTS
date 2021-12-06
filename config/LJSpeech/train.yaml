@@ -4,9 +4,9 @@ dist_config:
   dist_url: "tcp://localhost:54321"
   world_size: 1
 path:
-  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_aug_pred_kim"
-  log_path: "./output/log/LJSpeech_delightfultts_aug_pred_kim"
-  result_path: "./output/result/LJSpeech_delightfultts_aug_pred_kim"
+  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_aug_pred_kim_warmup"
+  log_path: "./output/log/LJSpeech_delightfultts_aug_pred_kim_warmup"
+  result_path: "./output/result/LJSpeech_delightfultts_aug_pred_kim_warmup"
 optimizer:
   batch_size: 8
   betas: [0.9, 0.98]
@@ -29,3 +29,4 @@ duration:
   binarization_loss_warmup_steps: 10000
 prosody:
   gmm_mdn_beta: 0.02
+  prosody_loss_enable_steps: 30000
