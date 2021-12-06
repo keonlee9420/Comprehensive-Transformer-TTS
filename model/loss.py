@@ -54,16 +54,11 @@ class CompTransTTSLoss(nn.Module):
         prob -- [B, src_len, num_gaussians]
         """
         target = target.unsqueeze(2).expand_as(sigma)
-        # prob = (1.0 / math.sqrt(2 * math.pi)) * torch.exp(-0.5 * ((target - mu) / sigma)**2) / sigma
-        log_prob = torch.log(1.0 / math.sqrt(2 * math.pi)/sigma) - 0.5 * ((target - mu) / sigma)**2
+        prob = torch.log((1.0 / (math.sqrt(2 * math.pi)*sigma))) -0.5 * ((target - mu) / sigma)**2
         if mask is not None:
-            # prob = prob.masked_fill(mask.unsqueeze(-1).unsqueeze(-1), 0)
-            log_prob = log_prob.masked_fill(mask.unsqueeze(-1).unsqueeze(-1), 0)
-        prob = torch.sum(log_prob, -1) # torch.mean(prob, dim=3)
-        # prob = torch.sum(torch.log(prob), -1)
-        # print(torch.log(prob))
-        # print(torch.sum(torch.log(prob), -1))
-        # exit(0)
+            prob = prob.masked_fill(mask.unsqueeze(-1).unsqueeze(-1), 0)
+        prob = torch.sum(prob, dim=3)
+
         return prob
 
     def mdn_loss(self, w, sigma, mu, target, mask=None):
@@ -74,13 +69,11 @@ class CompTransTTSLoss(nn.Module):
         target -- [B, src_len, out_features]
         mask -- [B, src_len]
         """
-        log_prob = torch.log(w) + self.log_gaussian_probability(sigma, mu, target)
-        nll = -torch.logsumexp(log_prob, 2)
+        prob = torch.log(w) + self.log_gaussian_probability(sigma, mu, target, mask)
+        nll = -torch.logsumexp(prob, 2)
         if mask is not None:
             nll = nll.masked_fill(mask, 0)
-            # nll = nll.masked_fill(mask.unsqueeze(-1), 0)
-        l_pp = torch.sum(nll, dim=1)
-        return torch.mean(l_pp)
+        return torch.mean(nll)
 
         # prob = w * self.gaussian_probability(sigma, mu, target, mask)
         # # prob = w.unsqueeze(-1) * self.gaussian_probability(sigma, mu, target, mask)
