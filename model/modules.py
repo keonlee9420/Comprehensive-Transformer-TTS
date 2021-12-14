@@ -757,14 +757,14 @@ class VarianceAdaptor(nn.Module):
                     preprocess_config, model_config)
                 self.phoneme_prosody_encoder = PhonemeLevelProsodyEncoder(
                     preprocess_config, model_config)
-                self.utterance_prosody_predictor = NonParallelProsodyPredictor(
-                    model_config, phoneme_level=False)
-                self.phoneme_prosody_predictor = NonParallelProsodyPredictor(
-                    model_config, phoneme_level=True)
-                # self.utterance_prosody_predictor = ParallelProsodyPredictor(
+                # self.utterance_prosody_predictor = NonParallelProsodyPredictor(
                 #     model_config, phoneme_level=False)
-                # self.phoneme_prosody_predictor = ParallelProsodyPredictor(
+                # self.phoneme_prosody_predictor = NonParallelProsodyPredictor(
                 #     model_config, phoneme_level=True)
+                self.utterance_prosody_predictor = ParallelProsodyPredictor(
+                    model_config, phoneme_level=False)
+                self.phoneme_prosody_predictor = ParallelProsodyPredictor(
+                    model_config, phoneme_level=True)
                 self.utterance_prosody_prj = nn.Linear(
                     model_config["prosody"]["bottleneck_size_u"], model_config["transformer"]["encoder_hidden"])
                 self.phoneme_prosody_prj = nn.Linear(
@@ -944,8 +944,8 @@ class VarianceAdaptor(nn.Module):
                     utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
                     phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
 
-                # x = x + self.utterance_prosody_prj(utterance_prosody_embeddings)
-                # x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings)
+                # x = x + self.utterance_prosody_prj(utterance_prosody_embeddings) # always using prosody extractor (no predictor)
+                # x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings) # always using prosody extractor (no predictor)
                 utterance_prosody_vectors = self.utterance_prosody_predictor(x)
                 x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
                         self.utterance_prosody_prj(utterance_prosody_vectors))
