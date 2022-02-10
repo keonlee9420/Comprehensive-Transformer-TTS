@@ -14,8 +14,10 @@ from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from pathlib import Path
 
+from g2p_en import G2p
 import audio as Audio
 from model import PreDefinedEmbedder
+from text import grapheme_to_phoneme
 from utils.tools import get_phoneme_level_pitch, get_phoneme_level_energy, plot_embedding
 
 
@@ -24,13 +26,15 @@ class Preprocessor:
         random.seed(train_config['seed'])
         self.preprocess_config = preprocess_config
         self.multi_speaker = model_config["multi_speaker"]
-        self.learn_alignment = model_config["duration_modeling"]["learn_alignment"]
+        # self.learn_alignment = model_config["duration_modeling"]["learn_alignment"]
         self.corpus_dir = preprocess_config["path"]["corpus_path"]
         self.in_dir = preprocess_config["path"]["raw_path"]
         self.out_dir = preprocess_config["path"]["preprocessed_path"]
         self.val_size = preprocess_config["preprocessing"]["val_size"]
         self.sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
         self.hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
+        self.filter_length = preprocess_config["preprocessing"]["stft"]["filter_length"]
+        self.trim_top_db = preprocess_config["preprocessing"]["audio"]["trim_top_db"]
         self.beta_binomial_scaling_factor = preprocess_config["preprocessing"]["duration"]["beta_binomial_scaling_factor"]
 
         assert preprocess_config["preprocessing"]["pitch"]["feature"] in [
@@ -54,12 +58,14 @@ class Preprocessor:
             preprocess_config["preprocessing"]["mel"]["mel_fmin"],
             preprocess_config["preprocessing"]["mel"]["mel_fmax"],
         )
-        self.val_prior = self.val_prior_names(os.path.join(self.out_dir, "val.txt"))
+        self.val_sup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_sup.txt"))
+        self.val_unsup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_unsup.txt"))
         self.speaker_emb = None
         self.in_sub_dirs = [p for p in os.listdir(self.in_dir) if os.path.isdir(os.path.join(self.in_dir, p))]
         if self.multi_speaker and preprocess_config["preprocessing"]["speaker_embedder"] != "none":
             self.speaker_emb = PreDefinedEmbedder(preprocess_config)
             self.speaker_emb_dict = self._init_spker_embeds(self.in_sub_dirs)
+        self.g2p = G2p()
 
     def _init_spker_embeds(self, spkers):
         spker_embeds = dict()
@@ -80,25 +86,34 @@ class Preprocessor:
 
     def build_from_path(self):
         embedding_dir = os.path.join(self.out_dir, "spker_embed")
-        os.makedirs((os.path.join(self.out_dir, "mel")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "pitch_frame")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "pitch_phone")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "energy_frame")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "energy_phone")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "mel_sup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "mel_unsup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "pitch_unsup_frame")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "pitch_sup_frame")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "pitch_sup_phone")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "energy_unsup_frame")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "energy_sup_frame")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "energy_sup_phone")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "duration")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "attn_prior")), exist_ok=True)
         os.makedirs(embedding_dir, exist_ok=True)
 
         print("Processing Data ...")
         out = list()
-        train = list()
-        val = list()
+        filtered_out_unsup = set()
+        filtered_out_sup = set()
+        train_unsup = list()
+        val_unsup = list()
+        train_sup = list()
+        val_sup = list()
         n_frames = 0
         max_seq_len = -float('inf')
-        pitch_frame_scaler = StandardScaler()
-        pitch_phone_scaler = StandardScaler()
-        energy_frame_scaler = StandardScaler()
-        energy_phone_scaler = StandardScaler()
+        pitch_unsup_frame_scaler = StandardScaler()
+        pitch_sup_frame_scaler = StandardScaler()
+        pitch_sup_phone_scaler = StandardScaler()
+        energy_unsup_frame_scaler = StandardScaler()
+        energy_sup_frame_scaler = StandardScaler()
+        energy_sup_phone_scaler = StandardScaler()
 
         def partial_fit(scaler, value):
             if len(value) > 0:
@@ -145,34 +160,65 @@ class Preprocessor:
                     tg_path = os.path.join(
                         self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)
                     )
-                    if os.path.exists(tg_path):
-                        ret = self.process_utterance(tg_path, speaker, basename, save_speaker_emb)
-                        if ret is None:
-                            continue
-                        else:
-                            info, pitch_frame, pitch_phone, energy_frame, energy_phone, n, spker_embed = ret
+                    (
+                        info_unsup,
+                        info_sup,
+                        pitch_unsup_frame,
+                        pitch_sup_frame,
+                        pitch_sup_phone,
+                        energy_unsup_frame,
+                        energy_sup_frame,
+                        energy_sup_phone,
+                        n,
+                        spker_embed,
+                    ) = self.process_utterance(tg_path, speaker, basename, save_speaker_emb)
 
-                        if self.val_prior is not None:
-                            if basename not in self.val_prior:
-                                train.append(info)
+                    if info_unsup is None and info_sup is None:
+                        filtered_out_unsup.add(basename)
+                        filtered_out_sup.add(basename)
+                        continue
+                    else:
+                        # Save unsupervised duration features
+                        if info_unsup is not None:
+                            if self.val_sup_prior is not None:
+                                if basename not in self.val_sup_prior:
+                                    train_unsup.append(info_unsup)
+                                else:
+                                    val_unsup.append(info_unsup)
                             else:
-                                val.append(info)
+                                out.append(info_unsup)
+
+                            partial_fit(pitch_unsup_frame_scaler, pitch_unsup_frame)
+                            partial_fit(energy_unsup_frame_scaler, energy_unsup_frame)
                         else:
-                            out.append(info)
-                    if save_speaker_emb:
-                        self.speaker_emb_dict[speaker].append(spker_embed)
+                            filtered_out_unsup.add(basename)
+                        # Save sup information
+                        if info_sup is not None:
+                            if self.val_unsup_prior is not None:
+                                if basename not in self.val_unsup_prior:
+                                    train_sup.append(info_sup)
+                                else:
+                                    val_sup.append(info_sup)
+                            else:
+                                out.append(info_sup)
 
-                    partial_fit(pitch_frame_scaler, pitch_frame)
-                    partial_fit(pitch_phone_scaler, pitch_phone)
-                    partial_fit(energy_frame_scaler, energy_frame)
-                    partial_fit(energy_phone_scaler, energy_phone)
+                            partial_fit(pitch_sup_frame_scaler, pitch_sup_frame)
+                            partial_fit(pitch_sup_phone_scaler, pitch_sup_phone)
+                            partial_fit(energy_sup_frame_scaler, energy_sup_frame)
+                            partial_fit(energy_sup_phone_scaler, energy_sup_phone)
+                        else:
+                            filtered_out_sup.add(basename)
 
-                    if n > max_seq_len:
-                        max_seq_len = n
+                        if save_speaker_emb:
+                            self.speaker_emb_dict[speaker].append(spker_embed)
 
-                    n_frames += n
+                        if n > max_seq_len:
+                            max_seq_len = n
+
+                        n_frames += n
 
                 # Calculate and save mean speaker embedding of this speaker
+                assert len(self.speaker_emb_dict[speaker]) > 0, "embedding of {} is empty!".format(speaker)
                 if save_speaker_emb:
                     spker_embed_filename = '{}-spker_embed.npy'.format(speaker)
                     np.save(os.path.join(self.out_dir, 'spker_embed', spker_embed_filename), \
@@ -180,17 +226,23 @@ class Preprocessor:
 
         print("Computing statistic quantities ...")
         # Perform normalization if necessary
-        pitch_frame_stats, energy_frame_stats = compute_stats(
-            pitch_frame_scaler,
-            energy_frame_scaler,
-            pitch_dir="pitch_frame",
-            energy_dir="energy_frame",
+        pitch_unsup_frame_stats, energy_unsup_frame_stats = compute_stats(
+            pitch_unsup_frame_scaler,
+            energy_unsup_frame_scaler,
+            pitch_dir="pitch_unsup_frame",
+            energy_dir="energy_unsup_frame",
         )
-        pitch_phone_stats, energy_phone_stats = compute_stats(
-            pitch_phone_scaler,
-            energy_phone_scaler,
-            pitch_dir="pitch_phone",
-            energy_dir="energy_phone",
+        pitch_sup_frame_stats, energy_sup_frame_stats = compute_stats(
+            pitch_sup_frame_scaler,
+            energy_sup_frame_scaler,
+            pitch_dir="pitch_sup_frame",
+            energy_dir="energy_sup_frame",
+        )
+        pitch_sup_phone_stats, energy_sup_phone_stats = compute_stats(
+            pitch_sup_phone_scaler,
+            energy_sup_phone_scaler,
+            pitch_dir="pitch_sup_phone",
+            energy_dir="energy_sup_phone",
         )
 
         # Save files
@@ -199,11 +251,13 @@ class Preprocessor:
 
         with open(os.path.join(self.out_dir, "stats.json"), "w") as f:
             stats = {
-                "pitch_frame": [float(var) for var in pitch_frame_stats],
-                "pitch_phone": [float(var) for var in pitch_phone_stats],
-                "energy_frame": [float(var) for var in energy_frame_stats],
-                "energy_phone": [float(var) for var in energy_phone_stats],
-                "max_seq_len": max_seq_len
+                "pitch_unsup_frame": [float(var) for var in pitch_unsup_frame_stats],
+                "pitch_sup_frame": [float(var) for var in pitch_sup_frame_stats],
+                "pitch_sup_phone": [float(var) for var in pitch_sup_phone_stats],
+                "energy_unsup_frame": [float(var) for var in energy_unsup_frame_stats],
+                "energy_sup_frame": [float(var) for var in energy_sup_frame_stats],
+                "energy_sup_phone": [float(var) for var in energy_sup_phone_stats],
+                "max_seq_len": max_seq_len,
             }
             f.write(json.dumps(stats))
 
@@ -220,52 +274,76 @@ class Preprocessor:
                 self.divide_speaker_by_gender(self.corpus_dir), filename="spker_embed_tsne.png"
             )
 
-        if self.val_prior is not None:
+        # Save dataset
+        filtered_out_unsup, filtered_out_sup = list(filtered_out_unsup), list(filtered_out_sup)
+        if self.val_sup_prior is not None:
             assert len(out) == 0
-            random.shuffle(train)
-            train = [r for r in train if r is not None]
-            val = [r for r in val if r is not None]
+            random.shuffle(train_sup)
+            train_sup = [r for r in train_sup if r is not None]
+            val_sup = [r for r in val_sup if r is not None]
         else:
-            assert len(train) == 0 and len(val) == 0
+            assert len(train_sup) == 0 and len(val_sup) == 0
             random.shuffle(out)
             out = [r for r in out if r is not None]
-            train = out[self.val_size :]
-            val = out[: self.val_size]
+            train_sup = out[self.val_size :]
+            val_sup = out[: self.val_size]
+
+        if self.val_unsup_prior is not None:
+            assert len(out) == 0
+            random.shuffle(train_unsup)
+            train_unsup = [r for r in train_unsup if r is not None]
+            val_unsup = [r for r in val_unsup if r is not None]
+        else:
+            assert len(train_unsup) == 0 and len(val_unsup) == 0
+            random.shuffle(out)
+            out = [r for r in out if r is not None]
+            train_unsup = out[self.val_size :]
+            val_unsup = out[: self.val_size]
 
         # Write metadata
-        with open(os.path.join(self.out_dir, "train.txt"), "w", encoding="utf-8") as f:
-            for m in train:
+        with open(os.path.join(self.out_dir, "train_sup.txt"), "w", encoding="utf-8") as f:
+            for m in train_sup:
                 f.write(m + "\n")
-        with open(os.path.join(self.out_dir, "val.txt"), "w", encoding="utf-8") as f:
-            for m in val:
+        with open(os.path.join(self.out_dir, "val_sup.txt"), "w", encoding="utf-8") as f:
+            for m in val_sup:
                 f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "train_unsup.txt"), "w", encoding="utf-8") as f:
+            for m in train_unsup:
+                f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "val_unsup.txt"), "w", encoding="utf-8") as f:
+            for m in val_unsup:
+                f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "filtered_out_unsup.txt"), "w", encoding="utf-8") as f:
+            for m in sorted(filtered_out_unsup):
+                f.write(str(m) + "\n")
+        with open(os.path.join(self.out_dir, "filtered_out_sup.txt"), "w", encoding="utf-8") as f:
+            for m in sorted(filtered_out_sup):
+                f.write(str(m) + "\n")
 
         return out
 
+    def load_audio(self, wav_path):
+        wav_raw, _ = librosa.load(wav_path, self.sampling_rate)
+        _, index = librosa.effects.trim(wav_raw, top_db=self.trim_top_db, frame_length=self.filter_length, hop_length=self.hop_length)
+        wav = wav_raw[index[0]:index[1]]
+        duration = (index[1] - index[0]) / self.hop_length
+        return wav_raw.astype(np.float32), wav.astype(np.float32), int(duration)
+
     def process_utterance(self, tg_path, speaker, basename, save_speaker_emb):
+        sup_out_exist, unsup_out_exist = True, True
         wav_path = os.path.join(self.in_dir, speaker, "{}.wav".format(basename))
         text_path = os.path.join(self.in_dir, speaker, "{}.lab".format(basename))
 
-        # Get alignments
-        textgrid = tgt.io.read_textgrid(tg_path)
-        phone, duration, start, end = self.get_alignment(
-            textgrid.get_tier_by_name("phones")
-        )
-        text = "{" + " ".join(phone) + "}"
-        if start >= end:
-            return None
-
-        # Read and trim wav files
-        wav, _ = librosa.load(wav_path, self.sampling_rate)
-        wav = wav.astype(np.float32)
+        wav_raw, wav, duration = self.load_audio(wav_path)
         spker_embed = self.speaker_emb(wav) if save_speaker_emb else None
-        wav = wav[
-            int(self.sampling_rate * start) : int(self.sampling_rate * end)
-        ]
 
         # Read raw text
         with open(text_path, "r") as f:
             raw_text = f.readline().strip("\n")
+        phone = grapheme_to_phoneme(raw_text, self.g2p)
+        phones = "{" + "}{".join(phone) + "}"
+        phones = re.sub(r"\{[^\w\s]?\}", "{sp}", phones)
+        text_unsup = phones.replace("}{", " ")
 
         # Compute fundamental frequency
         pitch, t = pw.dio(
@@ -274,63 +352,125 @@ class Preprocessor:
             frame_period=self.hop_length / self.sampling_rate * 1000,
         )
         pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
-
-        pitch = pitch[: sum(duration)]
+        pitch = pitch[: duration]
         if np.sum(pitch != 0) <= 1:
-            return None
+            unsup_out_exist = False
+        else:
+            # Compute mel-scale spectrogram and energy
+            mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+            mel_spectrogram = mel_spectrogram[:, : duration]
+            energy = energy[: duration]
 
-        # Compute mel-scale spectrogram and energy
-        mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
-        mel_spectrogram = mel_spectrogram[:, : sum(duration)]
-        energy = energy[: sum(duration)]
+            # Compute alignment prior
+            attn_prior = self.beta_binomial_prior_distribution(
+                mel_spectrogram.shape[1],
+                len(phone),
+                self.beta_binomial_scaling_factor,
+            )
 
-        # Compute alignment prior
-        attn_prior = self.beta_binomial_prior_distribution(
-            mel_spectrogram.shape[1],
-            len(duration),
-            self.beta_binomial_scaling_factor,
-        )
+            # Frame-level variance
+            pitch_unsup_frame, energy_unsup_frame = copy.deepcopy(pitch), copy.deepcopy(energy)
 
-        # Frame-level variance
-        pitch_frame, energy_frame = copy.deepcopy(pitch), copy.deepcopy(energy)
+            mel_spectrogram_unsup = copy.deepcopy(mel_spectrogram)
 
-        # Phone-level variance
-        pitch_phone, energy_phone = get_phoneme_level_pitch(duration, pitch), get_phoneme_level_energy(duration, energy)
+            # Save files
+            attn_prior_filename = "{}-attn_prior-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "attn_prior", attn_prior_filename), attn_prior)
 
-        # Save files
-        dur_filename = "{}-duration-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
+            pitch_frame_filename = "{}-pitch-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "pitch_unsup_frame", pitch_frame_filename), pitch_unsup_frame)
 
-        attn_prior_filename = "{}-attn_prior-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "attn_prior", attn_prior_filename), attn_prior)
+            energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "energy_unsup_frame", energy_frame_filename), energy_unsup_frame)
 
-        pitch_frame_filename = "{}-pitch-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "pitch_frame", pitch_frame_filename), pitch_frame)
+            mel_unsup_filename = "{}-mel-{}.npy".format(speaker, basename)
+            np.save(
+                os.path.join(self.out_dir, "mel_unsup", mel_unsup_filename),
+                mel_spectrogram_unsup.T,
+            )
 
-        pitch_phone_filename = "{}-pitch-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "pitch_phone", pitch_phone_filename), pitch_phone)
+        # Supervised duration features
+        if os.path.exists(tg_path):
+            # Get alignments
+            textgrid = tgt.io.read_textgrid(tg_path)
+            phone, duration, start, end = self.get_alignment(
+                textgrid.get_tier_by_name("phones")
+            )
+            text_sup = "{" + " ".join(phone) + "}"
+            if start >= end:
+                sup_out_exist = False
+            else:
+                # Read and trim wav files
+                wav, _ = librosa.load(wav_path, self.sampling_rate)
+                wav = wav.astype(np.float32)
+                wav = wav[
+                    int(self.sampling_rate * start) : int(self.sampling_rate * end)
+                ]
 
-        energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "energy_frame", energy_frame_filename), energy_frame)
- 
-        energy_phone_filename = "{}-energy-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "energy_phone", energy_phone_filename), energy_phone)
+                # Compute fundamental frequency
+                pitch, t = pw.dio(
+                    wav.astype(np.float64),
+                    self.sampling_rate,
+                    frame_period=self.hop_length / self.sampling_rate * 1000,
+                )
+                pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
 
-        mel_filename = "{}-mel-{}.npy".format(speaker, basename)
-        np.save(
-            os.path.join(self.out_dir, "mel", mel_filename),
-            mel_spectrogram.T,
-        )
+                pitch = pitch[: sum(duration)]
+                if np.sum(pitch != 0) <= 1:
+                    sup_out_exist = False
+                else:
+                    # Compute mel-scale spectrogram and energy
+                    mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+                    mel_spectrogram = mel_spectrogram[:, : sum(duration)]
+                    energy = energy[: sum(duration)]
 
-        return (
-            "|".join([basename, speaker, text, raw_text]),
-            self.remove_outlier(pitch_frame),
-            self.remove_outlier(pitch_phone),
-            self.remove_outlier(energy_frame),
-            self.remove_outlier(energy_phone),
-            mel_spectrogram.shape[1],
-            spker_embed,
-        )
+                    # Frame-level variance
+                    pitch_sup_frame, energy_sup_frame = copy.deepcopy(pitch), copy.deepcopy(energy)
+
+                    # Phone-level variance
+                    pitch_sup_phone, energy_sup_phone = get_phoneme_level_pitch(duration, pitch), get_phoneme_level_energy(duration, energy)
+
+                    mel_spectrogram_sup = copy.deepcopy(mel_spectrogram)
+
+                    # Save files
+                    dur_filename = "{}-duration-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
+
+                    pitch_frame_filename = "{}-pitch-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "pitch_sup_frame", pitch_frame_filename), pitch_sup_frame)
+
+                    pitch_phone_filename = "{}-pitch-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "pitch_sup_phone", pitch_phone_filename), pitch_sup_phone)
+
+                    energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "energy_sup_frame", energy_frame_filename), energy_sup_frame)
+
+                    energy_phone_filename = "{}-energy-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "energy_sup_phone", energy_phone_filename), energy_sup_phone)
+
+                    mel_sup_filename = "{}-mel-{}.npy".format(speaker, basename)
+                    np.save(
+                        os.path.join(self.out_dir, "mel_sup", mel_sup_filename),
+                        mel_spectrogram_sup.T,
+                    )
+        else:
+            sup_out_exist = False
+
+        if not sup_out_exist and not unsup_out_exist:
+            return tuple([None]*10)
+        else:
+            return (
+                "|".join([basename, speaker, text_unsup, raw_text]) if unsup_out_exist else None,
+                "|".join([basename, speaker, text_sup, raw_text]) if sup_out_exist else None,
+                self.remove_outlier(pitch_unsup_frame) if unsup_out_exist else None,
+                self.remove_outlier(pitch_sup_frame) if sup_out_exist else None,
+                self.remove_outlier(pitch_sup_phone) if sup_out_exist else None,
+                self.remove_outlier(energy_unsup_frame) if unsup_out_exist else None,
+                self.remove_outlier(energy_sup_frame) if sup_out_exist else None,
+                self.remove_outlier(energy_sup_phone) if sup_out_exist else None,
+                max(mel_spectrogram_unsup.shape[1] if unsup_out_exist else -1, mel_spectrogram_sup.shape[1] if sup_out_exist else -1),
+                spker_embed,
+            )
 
     def beta_binomial_prior_distribution(self, phoneme_count, mel_count, scaling_factor=1.0):
         P, M = phoneme_count, mel_count

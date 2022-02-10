@@ -1,7 +1,7 @@
 """ from https://github.com/keithito/tacotron """
 import re
 from text import cleaners
-from text.symbols import symbols
+from text.symbols import _punctuation, symbols
 
 
 # Mappings from symbol to numeric ID and vice versa:
@@ -39,6 +39,18 @@ def text_to_sequence(text, cleaner_names):
         text = m.group(3)
 
     return sequence
+
+
+def grapheme_to_phoneme(text, g2p):
+    """Converts grapheme to phoneme"""
+    phones = []
+    words = filter(None, re.split(r"([,;.\-\?\!\s+])", text))
+    for w in words:
+        # if w in _punctuation:
+        #     phones += [w]
+        # else:
+        phones += list(filter(lambda p: p != " ", g2p(w)))
+    return phones
 
 
 def sequence_to_text(sequence):
