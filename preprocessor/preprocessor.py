@@ -9,7 +9,6 @@ import librosa
 import numpy as np
 import pyworld as pw
 from scipy.stats import betabinom
-# from scipy.interpolate import interp1d
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from pathlib import Path
@@ -18,6 +17,7 @@ from g2p_en import G2p
 import audio as Audio
 from model import PreDefinedEmbedder
 from text import grapheme_to_phoneme
+from utils.pitch_tools import get_pitch, get_cont_lf0, get_lf0_cwt
 from utils.tools import get_phoneme_level_pitch, get_phoneme_level_energy, plot_embedding
 
 
@@ -37,16 +37,12 @@ class Preprocessor:
         self.trim_top_db = preprocess_config["preprocessing"]["audio"]["trim_top_db"]
         self.beta_binomial_scaling_factor = preprocess_config["preprocessing"]["duration"]["beta_binomial_scaling_factor"]
 
-        assert preprocess_config["preprocessing"]["pitch"]["feature"] in [
-            "phoneme_level",
-            "frame_level",
-        ]
+        self.with_f0 = preprocess_config["preprocessing"]["pitch"]["with_f0"]
+        self.with_f0cwt = preprocess_config["preprocessing"]["pitch"]["with_f0cwt"]
         assert preprocess_config["preprocessing"]["energy"]["feature"] in [
             "phoneme_level",
             "frame_level",
         ]
-
-        self.pitch_normalization = preprocess_config["preprocessing"]["pitch"]["normalization"]
         self.energy_normalization = preprocess_config["preprocessing"]["energy"]["normalization"]
 
         self.STFT = Audio.stft.TacotronSTFT(
@@ -86,15 +82,23 @@ class Preprocessor:
 
     def build_from_path(self):
         embedding_dir = os.path.join(self.out_dir, "spker_embed")
-        os.makedirs((os.path.join(self.out_dir, "mel_sup")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "mel_unsup")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "pitch_unsup_frame")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "pitch_sup_frame")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "pitch_sup_phone")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "mel_sup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "f0_unsup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "f0_sup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "pitch_unsup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "pitch_sup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "cwt_spec_unsup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "cwt_spec_sup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "cwt_scales_unsup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "cwt_scales_sup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "f0cwt_mean_std_unsup")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "f0cwt_mean_std_sup")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "energy_unsup_frame")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "energy_sup_frame")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "energy_sup_phone")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "duration")), exist_ok=True)
+        os.makedirs((os.path.join(self.out_dir, "mel2ph")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "attn_prior")), exist_ok=True)
         os.makedirs(embedding_dir, exist_ok=True)
 
@@ -108,9 +112,12 @@ class Preprocessor:
         val_sup = list()
         n_frames = 0
         max_seq_len = -float('inf')
-        pitch_unsup_frame_scaler = StandardScaler()
-        pitch_sup_frame_scaler = StandardScaler()
-        pitch_sup_phone_scaler = StandardScaler()
+        mel_unsup_min = np.ones(80) * float('inf')
+        mel_unsup_max = np.ones(80) * -float('inf')
+        mel_sup_min = np.ones(80) * float('inf')
+        mel_sup_max = np.ones(80) * -float('inf')
+        f0s_unsup = []
+        f0s_sup = []
         energy_unsup_frame_scaler = StandardScaler()
         energy_sup_frame_scaler = StandardScaler()
         energy_sup_phone_scaler = StandardScaler()
@@ -119,7 +126,15 @@ class Preprocessor:
             if len(value) > 0:
                 scaler.partial_fit(value.reshape((-1, 1)))
 
-        def compute_stats(pitch_scaler, energy_scaler, pitch_dir="pitch", energy_dir="energy"):
+        def compute_f0_stats(f0s):
+            if len(f0s) > 0:
+                f0s = np.concatenate(f0s, 0)
+                f0s = f0s[f0s != 0]
+                f0_mean = np.mean(f0s).item()
+                f0_std = np.std(f0s).item()
+            return (f0_mean, f0_std)
+
+        def compute_pitch_stats(pitch_scaler, pitch_dir="pitch"):
             if self.pitch_normalization:
                 pitch_mean = pitch_scaler.mean_[0]
                 pitch_std = pitch_scaler.scale_[0]
@@ -127,20 +142,25 @@ class Preprocessor:
                 # A numerical trick to avoid normalization...
                 pitch_mean = 0
                 pitch_std = 1
-            if self.energy_normalization:
-                energy_mean = energy_scaler.mean_[0]
-                energy_std = energy_scaler.scale_[0]
-            else:
-                energy_mean = 0
-                energy_std = 1
 
             pitch_min, pitch_max = self.normalize(
                 os.path.join(self.out_dir, pitch_dir), pitch_mean, pitch_std
             )
+            return (pitch_min, pitch_max, pitch_mean, pitch_std)
+
+        def compute_energy_stats(energy_scaler, energy_dir="energy"):
+            if self.energy_normalization:
+                energy_mean = energy_scaler.mean_[0]
+                energy_std = energy_scaler.scale_[0]
+            else:
+                # A numerical trick to avoid normalization...
+                energy_mean = 0
+                energy_std = 1
+
             energy_min, energy_max = self.normalize(
                 os.path.join(self.out_dir, energy_dir), energy_mean, energy_std
             )
-            return (pitch_min, pitch_max, pitch_mean, pitch_std), (energy_min, energy_max, energy_mean, energy_std)
+            return (energy_min, energy_max, energy_mean, energy_std)
 
         skip_speakers = set()
         for embedding_name in os.listdir(embedding_dir):
@@ -163,13 +183,16 @@ class Preprocessor:
                     (
                         info_unsup,
                         info_sup,
-                        pitch_unsup_frame,
-                        pitch_sup_frame,
-                        pitch_sup_phone,
+                        f0_unsup,
+                        f0_sup,
                         energy_unsup_frame,
                         energy_sup_frame,
                         energy_sup_phone,
                         n,
+                        m_unsup_min,
+                        m_unsup_max,
+                        m_sup_min,
+                        m_sup_max,
                         spker_embed,
                     ) = self.process_utterance(tg_path, speaker, basename, save_speaker_emb)
 
@@ -188,7 +211,8 @@ class Preprocessor:
                             else:
                                 out.append(info_unsup)
 
-                            partial_fit(pitch_unsup_frame_scaler, pitch_unsup_frame)
+                            if len(f0_unsup) > 0:
+                                f0s_unsup.append(f0_unsup)
                             partial_fit(energy_unsup_frame_scaler, energy_unsup_frame)
                         else:
                             filtered_out_unsup.add(basename)
@@ -202,8 +226,8 @@ class Preprocessor:
                             else:
                                 out.append(info_sup)
 
-                            partial_fit(pitch_sup_frame_scaler, pitch_sup_frame)
-                            partial_fit(pitch_sup_phone_scaler, pitch_sup_phone)
+                            if len(f0_sup) > 0:
+                                f0s_sup.append(f0_sup)
                             partial_fit(energy_sup_frame_scaler, energy_sup_frame)
                             partial_fit(energy_sup_phone_scaler, energy_sup_phone)
                         else:
@@ -212,36 +236,37 @@ class Preprocessor:
                         if save_speaker_emb:
                             self.speaker_emb_dict[speaker].append(spker_embed)
 
+                        mel_unsup_min = np.minimum(mel_unsup_min, m_unsup_min)
+                        mel_unsup_max = np.maximum(mel_unsup_max, m_unsup_max)
+                        mel_sup_min = np.minimum(mel_sup_min, m_sup_min)
+                        mel_sup_max = np.maximum(mel_sup_max, m_sup_max)
+
                         if n > max_seq_len:
                             max_seq_len = n
 
                         n_frames += n
 
                 # Calculate and save mean speaker embedding of this speaker
-                assert len(self.speaker_emb_dict[speaker]) > 0, "embedding of {} is empty!".format(speaker)
                 if save_speaker_emb:
                     spker_embed_filename = '{}-spker_embed.npy'.format(speaker)
                     np.save(os.path.join(self.out_dir, 'spker_embed', spker_embed_filename), \
                         np.mean(self.speaker_emb_dict[speaker], axis=0), allow_pickle=False)
 
         print("Computing statistic quantities ...")
+        f0s_unsup_stats = compute_f0_stats(f0s_unsup)
+        f0s_sup_stats = compute_f0_stats(f0s_sup)
+
         # Perform normalization if necessary
-        pitch_unsup_frame_stats, energy_unsup_frame_stats = compute_stats(
-            pitch_unsup_frame_scaler,
+        energy_unsup_frame_stats = compute_energy_stats(
             energy_unsup_frame_scaler,
-            pitch_dir="pitch_unsup_frame",
             energy_dir="energy_unsup_frame",
         )
-        pitch_sup_frame_stats, energy_sup_frame_stats = compute_stats(
-            pitch_sup_frame_scaler,
+        energy_sup_frame_stats = compute_energy_stats(
             energy_sup_frame_scaler,
-            pitch_dir="pitch_sup_frame",
             energy_dir="energy_sup_frame",
         )
-        pitch_sup_phone_stats, energy_sup_phone_stats = compute_stats(
-            pitch_sup_phone_scaler,
+        energy_sup_phone_stats = compute_energy_stats(
             energy_sup_phone_scaler,
-            pitch_dir="pitch_sup_phone",
             energy_dir="energy_sup_phone",
         )
 
@@ -251,12 +276,15 @@ class Preprocessor:
 
         with open(os.path.join(self.out_dir, "stats.json"), "w") as f:
             stats = {
-                "pitch_unsup_frame": [float(var) for var in pitch_unsup_frame_stats],
-                "pitch_sup_frame": [float(var) for var in pitch_sup_frame_stats],
-                "pitch_sup_phone": [float(var) for var in pitch_sup_phone_stats],
+                "f0_unsup": [float(var) for var in f0s_unsup_stats],
+                "f0_sup": [float(var) for var in f0s_sup_stats],
                 "energy_unsup_frame": [float(var) for var in energy_unsup_frame_stats],
                 "energy_sup_frame": [float(var) for var in energy_sup_frame_stats],
                 "energy_sup_phone": [float(var) for var in energy_sup_phone_stats],
+                "spec_unsup_min": mel_unsup_min.tolist(),
+                "spec_unsup_max": mel_unsup_max.tolist(),
+                "spec_sup_min": mel_sup_min.tolist(),
+                "spec_sup_max": mel_sup_max.tolist(),
                 "max_seq_len": max_seq_len,
             }
             f.write(json.dumps(stats))
@@ -345,55 +373,64 @@ class Preprocessor:
         phones = re.sub(r"\{[^\w\s]?\}", "{sp}", phones)
         text_unsup = phones.replace("}{", " ")
 
-        # Compute fundamental frequency
-        pitch, t = pw.dio(
-            wav.astype(np.float64),
-            self.sampling_rate,
-            frame_period=self.hop_length / self.sampling_rate * 1000,
+        # Compute mel-scale spectrogram and energy
+        mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+        mel_spectrogram = mel_spectrogram[:, : duration]
+        energy = energy[: duration]
+
+        # Compute pitch
+        if self.with_f0:
+            f0_unsup, pitch_unsup = self.get_pitch(wav, mel_spectrogram.T)
+            f0_unsup = f0_unsup[:duration]
+            pitch_unsup = pitch_unsup[:duration]
+            if self.with_f0cwt:
+                cwt_spec_unsup, cwt_scales_unsup, f0cwt_mean_std_unsup = self.get_f0cwt(f0_unsup)
+
+        # Compute alignment prior
+        attn_prior = self.beta_binomial_prior_distribution(
+            mel_spectrogram.shape[1],
+            len(phone),
+            self.beta_binomial_scaling_factor,
         )
-        pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
-        pitch = pitch[: duration]
-        if np.sum(pitch != 0) <= 1:
-            unsup_out_exist = False
-        else:
-            # Compute mel-scale spectrogram and energy
-            mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
-            mel_spectrogram = mel_spectrogram[:, : duration]
-            energy = energy[: duration]
 
-            # Compute alignment prior
-            attn_prior = self.beta_binomial_prior_distribution(
-                mel_spectrogram.shape[1],
-                len(phone),
-                self.beta_binomial_scaling_factor,
-            )
+        # Frame-level variance
+        energy_unsup_frame = copy.deepcopy(energy)
 
-            # Frame-level variance
-            pitch_unsup_frame, energy_unsup_frame = copy.deepcopy(pitch), copy.deepcopy(energy)
+        mel_spectrogram_unsup = copy.deepcopy(mel_spectrogram)
 
-            mel_spectrogram_unsup = copy.deepcopy(mel_spectrogram)
+        # Save files
+        attn_prior_filename = "{}-attn_prior-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "attn_prior", attn_prior_filename), attn_prior)
 
-            # Save files
-            attn_prior_filename = "{}-attn_prior-{}.npy".format(speaker, basename)
-            np.save(os.path.join(self.out_dir, "attn_prior", attn_prior_filename), attn_prior)
+        f0_filename = "{}-f0-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "f0_unsup", f0_filename), f0_unsup)
 
-            pitch_frame_filename = "{}-pitch-{}.npy".format(speaker, basename)
-            np.save(os.path.join(self.out_dir, "pitch_unsup_frame", pitch_frame_filename), pitch_unsup_frame)
+        pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "pitch_unsup", pitch_filename), pitch_unsup)
 
-            energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
-            np.save(os.path.join(self.out_dir, "energy_unsup_frame", energy_frame_filename), energy_unsup_frame)
+        cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "cwt_spec_unsup", cwt_spec_filename), cwt_spec_unsup)
 
-            mel_unsup_filename = "{}-mel-{}.npy".format(speaker, basename)
-            np.save(
-                os.path.join(self.out_dir, "mel_unsup", mel_unsup_filename),
-                mel_spectrogram_unsup.T,
-            )
+        cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "cwt_scales_unsup", cwt_scales_filename), cwt_scales_unsup)
+
+        f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "f0cwt_mean_std_unsup", f0cwt_mean_std_filename), f0cwt_mean_std_unsup)
+
+        energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
+        np.save(os.path.join(self.out_dir, "energy_unsup_frame", energy_frame_filename), energy_unsup_frame)
+
+        mel_unsup_filename = "{}-mel-{}.npy".format(speaker, basename)
+        np.save(
+            os.path.join(self.out_dir, "mel_unsup", mel_unsup_filename),
+            mel_spectrogram_unsup.T,
+        )
 
         # Supervised duration features
         if os.path.exists(tg_path):
             # Get alignments
             textgrid = tgt.io.read_textgrid(tg_path)
-            phone, duration, start, end = self.get_alignment(
+            phone, duration, mel2ph, start, end = self.get_alignment(
                 textgrid.get_tier_by_name("phones")
             )
             text_sup = "{" + " ".join(phone) + "}"
@@ -407,52 +444,60 @@ class Preprocessor:
                     int(self.sampling_rate * start) : int(self.sampling_rate * end)
                 ]
 
-                # Compute fundamental frequency
-                pitch, t = pw.dio(
-                    wav.astype(np.float64),
-                    self.sampling_rate,
-                    frame_period=self.hop_length / self.sampling_rate * 1000,
+                # Compute mel-scale spectrogram and energy
+                mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+                mel_spectrogram = mel_spectrogram[:, : sum(duration)]
+                energy = energy[: sum(duration)]
+
+                # Compute pitch
+                if self.with_f0:
+                    f0_sup, pitch_sup = self.get_pitch(wav, mel_spectrogram.T)
+                    f0_sup = f0_sup[:sum(duration)]
+                    pitch_sup = pitch_sup[:sum(duration)]
+                    if self.with_f0cwt:
+                        cwt_spec_sup, cwt_scales_sup, f0cwt_mean_std_sup = self.get_f0cwt(f0_sup)
+
+                # Frame-level variance
+                energy_sup_frame = copy.deepcopy(energy)
+
+                # Phone-level variance
+                energy_sup_phone = get_phoneme_level_energy(duration, energy)
+
+                mel_spectrogram_sup = copy.deepcopy(mel_spectrogram)
+
+                # Save files
+                dur_filename = "{}-duration-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
+
+                mel2ph_filename = "{}-mel2ph-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "mel2ph", mel2ph_filename), mel2ph)
+
+                f0_filename = "{}-f0-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "f0_sup", f0_filename), f0_sup)
+
+                pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "pitch_sup", pitch_filename), pitch_sup)
+
+                cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "cwt_spec_sup", cwt_spec_filename), cwt_spec_sup)
+
+                cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "cwt_scales_sup", cwt_scales_filename), cwt_scales_sup)
+
+                f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "f0cwt_mean_std_sup", f0cwt_mean_std_filename), f0cwt_mean_std_sup)
+
+                energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "energy_sup_frame", energy_frame_filename), energy_sup_frame)
+
+                energy_phone_filename = "{}-energy-{}.npy".format(speaker, basename)
+                np.save(os.path.join(self.out_dir, "energy_sup_phone", energy_phone_filename), energy_sup_phone)
+
+                mel_sup_filename = "{}-mel-{}.npy".format(speaker, basename)
+                np.save(
+                    os.path.join(self.out_dir, "mel_sup", mel_sup_filename),
+                    mel_spectrogram_sup.T,
                 )
-                pitch = pw.stonemask(wav.astype(np.float64), pitch, t, self.sampling_rate)
-
-                pitch = pitch[: sum(duration)]
-                if np.sum(pitch != 0) <= 1:
-                    sup_out_exist = False
-                else:
-                    # Compute mel-scale spectrogram and energy
-                    mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
-                    mel_spectrogram = mel_spectrogram[:, : sum(duration)]
-                    energy = energy[: sum(duration)]
-
-                    # Frame-level variance
-                    pitch_sup_frame, energy_sup_frame = copy.deepcopy(pitch), copy.deepcopy(energy)
-
-                    # Phone-level variance
-                    pitch_sup_phone, energy_sup_phone = get_phoneme_level_pitch(duration, pitch), get_phoneme_level_energy(duration, energy)
-
-                    mel_spectrogram_sup = copy.deepcopy(mel_spectrogram)
-
-                    # Save files
-                    dur_filename = "{}-duration-{}.npy".format(speaker, basename)
-                    np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
-
-                    pitch_frame_filename = "{}-pitch-{}.npy".format(speaker, basename)
-                    np.save(os.path.join(self.out_dir, "pitch_sup_frame", pitch_frame_filename), pitch_sup_frame)
-
-                    pitch_phone_filename = "{}-pitch-{}.npy".format(speaker, basename)
-                    np.save(os.path.join(self.out_dir, "pitch_sup_phone", pitch_phone_filename), pitch_sup_phone)
-
-                    energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
-                    np.save(os.path.join(self.out_dir, "energy_sup_frame", energy_frame_filename), energy_sup_frame)
-
-                    energy_phone_filename = "{}-energy-{}.npy".format(speaker, basename)
-                    np.save(os.path.join(self.out_dir, "energy_sup_phone", energy_phone_filename), energy_sup_phone)
-
-                    mel_sup_filename = "{}-mel-{}.npy".format(speaker, basename)
-                    np.save(
-                        os.path.join(self.out_dir, "mel_sup", mel_sup_filename),
-                        mel_spectrogram_sup.T,
-                    )
         else:
             sup_out_exist = False
 
@@ -462,13 +507,16 @@ class Preprocessor:
             return (
                 "|".join([basename, speaker, text_unsup, raw_text]) if unsup_out_exist else None,
                 "|".join([basename, speaker, text_sup, raw_text]) if sup_out_exist else None,
-                self.remove_outlier(pitch_unsup_frame) if unsup_out_exist else None,
-                self.remove_outlier(pitch_sup_frame) if sup_out_exist else None,
-                self.remove_outlier(pitch_sup_phone) if sup_out_exist else None,
+                f0_unsup if unsup_out_exist else None,
+                f0_sup if sup_out_exist else None,
                 self.remove_outlier(energy_unsup_frame) if unsup_out_exist else None,
                 self.remove_outlier(energy_sup_frame) if sup_out_exist else None,
                 self.remove_outlier(energy_sup_phone) if sup_out_exist else None,
                 max(mel_spectrogram_unsup.shape[1] if unsup_out_exist else -1, mel_spectrogram_sup.shape[1] if sup_out_exist else -1),
+                np.min(mel_spectrogram_unsup, axis=1) if unsup_out_exist else np.ones(80) * float('inf'),
+                np.max(mel_spectrogram_unsup, axis=1) if unsup_out_exist else np.ones(80) * -float('inf'),
+                np.min(mel_spectrogram_sup, axis=1) if sup_out_exist else np.ones(80) * float('inf'),
+                np.max(mel_spectrogram_sup, axis=1) if sup_out_exist else np.ones(80) * -float('inf'),
                 spker_embed,
             )
 
@@ -488,6 +536,7 @@ class Preprocessor:
 
         phones = []
         durations = []
+        mel2ph = []
         start_time = 0
         end_time = 0
         end_idx = 0
@@ -521,7 +570,28 @@ class Preprocessor:
         phones = phones[:end_idx]
         durations = durations[:end_idx]
 
-        return phones, durations, start_time, end_time
+        # Get mel2ph
+        for ph_idx in range(len(phones)):
+            mel2ph += [ph_idx + 1] * durations[ph_idx]
+        assert sum(durations) == len(mel2ph)
+
+        return phones, durations, mel2ph, start_time, end_time
+
+    def get_pitch(self, wav, mel):
+        f0, pitch_coarse = get_pitch(wav, mel, self.preprocess_config)
+        if sum(f0) == 0:
+            raise PreprocessError("Empty f0")
+        return f0, pitch_coarse
+
+    def get_f0cwt(self, f0):
+        uv, cont_lf0_lpf = get_cont_lf0(f0)
+        logf0s_mean_org, logf0s_std_org = np.mean(cont_lf0_lpf), np.std(cont_lf0_lpf)
+        logf0s_mean_std_org = np.array([logf0s_mean_org, logf0s_std_org])
+        cont_lf0_lpf_norm = (cont_lf0_lpf - logf0s_mean_org) / logf0s_std_org
+        Wavelet_lf0, scales = get_lf0_cwt(cont_lf0_lpf_norm)
+        if np.any(np.isnan(Wavelet_lf0)):
+            raise PreprocessError("NaN CWT")
+        return Wavelet_lf0, scales, logf0s_mean_std_org
 
     def remove_outlier(self, values):
         values = np.array(values)

@@ -26,6 +26,9 @@ preprocessing:
   pitch:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
+  
+    with_f0: True
+    with_f0cwt: True
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
