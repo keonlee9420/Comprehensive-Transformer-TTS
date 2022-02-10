@@ -327,11 +327,11 @@ class ReferenceEncoder(nn.Module):
 
         E = model_config["transformer"]["encoder_hidden"]
         n_mel_channels = preprocess_config["preprocessing"]["mel"]["n_mel_channels"]
-        ref_enc_filters = model_config["prosody"]["ref_enc_filters"]
-        ref_enc_size = model_config["prosody"]["ref_enc_size"]
-        ref_enc_strides = model_config["prosody"]["ref_enc_strides"]
-        ref_enc_pad = model_config["prosody"]["ref_enc_pad"]
-        ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
+        ref_enc_filters = model_config["prosody"]["liu2021"]["ref_enc_filters"]
+        ref_enc_size = model_config["prosody"]["liu2021"]["ref_enc_size"]
+        ref_enc_strides = model_config["prosody"]["liu2021"]["ref_enc_strides"]
+        ref_enc_pad = model_config["prosody"]["liu2021"]["ref_enc_pad"]
+        ref_enc_gru_size = model_config["prosody"]["liu2021"]["ref_enc_gru_size"]
 
         self.n_mel_channels = n_mel_channels
         K = len(ref_enc_filters)
@@ -395,9 +395,9 @@ class PhonemeLevelProsodyEncoder(nn.Module):
 
         self.E = model_config["transformer"]["encoder_hidden"]
         self.d_q = self.d_k = model_config["transformer"]["encoder_hidden"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size_p"]
-        ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
-        ref_attention_dropout = model_config["prosody"]["ref_attention_dropout"]
+        bottleneck_size = model_config["prosody"]["liu2021"]["bottleneck_size_p"]
+        ref_enc_gru_size = model_config["prosody"]["liu2021"]["ref_enc_gru_size"]
+        ref_attention_dropout = model_config["prosody"]["liu2021"]["ref_attention_dropout"]
 
         self.encoder = ReferenceEncoder(preprocess_config, model_config)
         self.linears = nn.ModuleList([
@@ -448,7 +448,7 @@ class STL(nn.Module):
 
         num_heads = 1
         E = model_config["transformer"]["encoder_hidden"]
-        self.token_num = model_config["prosody"]["token_num"]
+        self.token_num = model_config["prosody"]["liu2021"]["token_num"]
         self.embed = nn.Parameter(torch.FloatTensor(
             self.token_num, E // num_heads))
         d_q = E // 2
@@ -532,9 +532,9 @@ class UtteranceLevelProsodyEncoder(nn.Module):
 
         self.E = model_config["transformer"]["encoder_hidden"]
         self.d_q = self.d_k = model_config["transformer"]["encoder_hidden"]
-        ref_enc_gru_size = model_config["prosody"]["ref_enc_gru_size"]
-        ref_attention_dropout = model_config["prosody"]["ref_attention_dropout"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size_u"]
+        ref_enc_gru_size = model_config["prosody"]["liu2021"]["ref_enc_gru_size"]
+        ref_attention_dropout = model_config["prosody"]["liu2021"]["ref_attention_dropout"]
+        bottleneck_size = model_config["prosody"]["liu2021"]["bottleneck_size_u"]
 
         self.encoder = ReferenceEncoder(preprocess_config, model_config)
         self.encoder_prj = nn.Linear(ref_enc_gru_size, self.E // 2)
@@ -570,10 +570,10 @@ class ParallelProsodyPredictor(nn.Module):
         self.input_size = self.E
         self.filter_size = self.E
         self.conv_output_size = self.E
-        self.kernel = model_config["prosody"]["predictor_kernel_size"]
-        self.dropout = model_config["prosody"]["predictor_dropout"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size_p"] if phoneme_level else\
-                          model_config["prosody"]["bottleneck_size_u"]
+        self.kernel = model_config["prosody"]["liu2021"]["predictor_kernel_size"]
+        self.dropout = model_config["prosody"]["liu2021"]["predictor_dropout"]
+        bottleneck_size = model_config["prosody"]["liu2021"]["bottleneck_size_p"] if phoneme_level else\
+                          model_config["prosody"]["liu2021"]["bottleneck_size_u"]
 
         self.conv_layer = nn.Sequential(
             OrderedDict(
@@ -647,10 +647,10 @@ class NonParallelProsodyPredictor(nn.Module):
         self.phoneme_level = phoneme_level
         # self.E = model_config["transformer"]["encoder_hidden"]
         self.d_model = model_config["transformer"]["encoder_hidden"]
-        kernel_size = model_config["prosody"]["predictor_kernel_size"]
-        dropout = model_config["prosody"]["predictor_dropout"]
-        bottleneck_size = model_config["prosody"]["bottleneck_size_p"] if phoneme_level else\
-                          model_config["prosody"]["bottleneck_size_u"]
+        kernel_size = model_config["prosody"]["liu2021"]["predictor_kernel_size"]
+        dropout = model_config["prosody"]["liu2021"]["predictor_dropout"]
+        bottleneck_size = model_config["prosody"]["liu2021"]["bottleneck_size_p"] if phoneme_level else\
+                          model_config["prosody"]["liu2021"]["bottleneck_size_u"]
         self.conv_stack = nn.ModuleList(
             [
                 ConvBlock(
@@ -734,41 +734,38 @@ class VarianceAdaptor(nn.Module):
                 multi_speaker=model_config["multi_speaker"],
             )
 
-        self.learn_prosody = model_config["learn_prosody"]
-        self.learn_mixture = model_config["prosody"]["learn_mixture"]
-        self.learn_implicit = model_config["prosody"]["learn_implicit"]
-        if self.learn_prosody:
-            if self.learn_mixture:
-                assert not self.learn_alignment
-                self.prosody_extractor = ProsodyExtractor(
-                    n_mel_channels=preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
-                    d_model=d_model,
-                    kernel_size=model_config["prosody"]["extractor_kernel_size"],
-                )
-                self.prosody_predictor = ProsodyPredictor(
-                    d_model=d_model,
-                    kernel_size=model_config["prosody"]["predictor_kernel_size"],
-                    num_gaussians=model_config["prosody"]["predictor_num_gaussians"],
-                    dropout=model_config["prosody"]["predictor_dropout"],
-                )
-                self.prosody_linear = LinearNorm(2 * d_model, d_model)
-            if self.learn_implicit:
-                self.utterance_prosody_encoder = UtteranceLevelProsodyEncoder(
-                    preprocess_config, model_config)
-                self.phoneme_prosody_encoder = PhonemeLevelProsodyEncoder(
-                    preprocess_config, model_config)
-                # self.utterance_prosody_predictor = NonParallelProsodyPredictor(
-                #     model_config, phoneme_level=False)
-                # self.phoneme_prosody_predictor = NonParallelProsodyPredictor(
-                #     model_config, phoneme_level=True)
-                self.utterance_prosody_predictor = ParallelProsodyPredictor(
-                    model_config, phoneme_level=False)
-                self.phoneme_prosody_predictor = ParallelProsodyPredictor(
-                    model_config, phoneme_level=True)
-                self.utterance_prosody_prj = nn.Linear(
-                    model_config["prosody"]["bottleneck_size_u"], model_config["transformer"]["encoder_hidden"])
-                self.phoneme_prosody_prj = nn.Linear(
-                    model_config["prosody"]["bottleneck_size_p"], model_config["transformer"]["encoder_hidden"])
+        self.learn_type = model_config["prosody"]["learn_type"]
+        if self.learn_type == "du2021":
+            assert not self.learn_alignment
+            self.prosody_extractor = ProsodyExtractor(
+                n_mel_channels=preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
+                d_model=d_model,
+                kernel_size=model_config["prosody"]["du2021"]["extractor_kernel_size"],
+            )
+            self.prosody_predictor = ProsodyPredictor(
+                d_model=d_model,
+                kernel_size=model_config["prosody"]["du2021"]["predictor_kernel_size"],
+                num_gaussians=model_config["prosody"]["du2021"]["predictor_num_gaussians"],
+                dropout=model_config["prosody"]["du2021"]["predictor_dropout"],
+            )
+            self.prosody_linear = LinearNorm(2 * d_model, d_model)
+        elif self.learn_type == "liu2021":
+            self.utterance_prosody_encoder = UtteranceLevelProsodyEncoder(
+                preprocess_config, model_config)
+            self.phoneme_prosody_encoder = PhonemeLevelProsodyEncoder(
+                preprocess_config, model_config)
+            # self.utterance_prosody_predictor = NonParallelProsodyPredictor(
+            #     model_config, phoneme_level=False)
+            # self.phoneme_prosody_predictor = NonParallelProsodyPredictor(
+            #     model_config, phoneme_level=True)
+            self.utterance_prosody_predictor = ParallelProsodyPredictor(
+                model_config, phoneme_level=False)
+            self.phoneme_prosody_predictor = ParallelProsodyPredictor(
+                model_config, phoneme_level=True)
+            self.utterance_prosody_prj = nn.Linear(
+                model_config["prosody"]["liu2021"]["bottleneck_size_u"], model_config["transformer"]["encoder_hidden"])
+            self.phoneme_prosody_prj = nn.Linear(
+                model_config["prosody"]["liu2021"]["bottleneck_size_p"], model_config["transformer"]["encoder_hidden"])
 
         pitch_level_tag, energy_level_tag, self.pitch_feature_level, self.energy_feature_level = \
                                     get_variance_level(preprocess_config, model_config, data_loading=False)
@@ -924,41 +921,40 @@ class VarianceAdaptor(nn.Module):
             )
 
         prosody_info = None
-        if self.learn_prosody:
-            # GMM-MDN for Phone-Level Prosody Modeling (Du et al., 2021)
-            if self.learn_mixture and not self.learn_alignment:
-                w, sigma, mu = self.prosody_predictor(text, src_mask)
+        # GMM-MDN for Phone-Level Prosody Modeling (Du et al., 2021)
+        if self.learn_type == "du2021" and not self.learn_alignment:
+            w, sigma, mu = self.prosody_predictor(text, src_mask)
 
-                if self.training:
-                    prosody_embeddings = self.prosody_extractor(mel, mel_len, duration_target, src_len)
-                else:
-                    prosody_embeddings = self.prosody_predictor.sample(w, sigma, mu)
-                x = x + self.prosody_linear(prosody_embeddings)
-                prosody_info = (w, sigma, mu, prosody_embeddings)
+            if self.training:
+                prosody_embeddings = self.prosody_extractor(mel, mel_len, duration_target, src_len)
+            else:
+                prosody_embeddings = self.prosody_predictor.sample(w, sigma, mu)
+            x = x + self.prosody_linear(prosody_embeddings)
+            prosody_info = (w, sigma, mu, prosody_embeddings)
 
-            # Implicit Prosody Modeling (Liu et al., 2021)
-            elif self.learn_implicit:
-                utterance_prosody_embeddings = phoneme_prosody_embeddings = phoneme_prosody_attn = None
-                utterance_prosody_vectors = phoneme_prosody_vectors = None
-                if self.training:
-                    utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
-                    phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
+        # Implicit Prosody Modeling (Liu et al., 2021)
+        elif self.learn_type == "liu2021":
+            utterance_prosody_embeddings = phoneme_prosody_embeddings = phoneme_prosody_attn = None
+            utterance_prosody_vectors = phoneme_prosody_vectors = None
+            if self.training:
+                utterance_prosody_embeddings = self.utterance_prosody_encoder(mel, mel_mask)
+                phoneme_prosody_embeddings, phoneme_prosody_attn = self.phoneme_prosody_encoder(x, src_len, src_mask, mel, mel_len, mel_mask)
 
-                # x = x + self.utterance_prosody_prj(utterance_prosody_embeddings) # always using prosody extractor (no predictor)
-                # x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings) # always using prosody extractor (no predictor)
-                utterance_prosody_vectors = self.utterance_prosody_predictor(x)
-                x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
-                        self.utterance_prosody_prj(utterance_prosody_vectors))
-                phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
-                x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
-                        self.phoneme_prosody_prj(phoneme_prosody_vectors))
-                prosody_info = (
-                    utterance_prosody_embeddings,
-                    phoneme_prosody_embeddings,
-                    utterance_prosody_vectors,
-                    phoneme_prosody_vectors,
-                    phoneme_prosody_attn,
-                )
+            # x = x + self.utterance_prosody_prj(utterance_prosody_embeddings) # always using prosody extractor (no predictor)
+            # x = x + self.phoneme_prosody_prj(phoneme_prosody_embeddings) # always using prosody extractor (no predictor)
+            utterance_prosody_vectors = self.utterance_prosody_predictor(x)
+            x = x + (self.utterance_prosody_prj(utterance_prosody_embeddings) if self.training else
+                    self.utterance_prosody_prj(utterance_prosody_vectors))
+            phoneme_prosody_vectors = self.phoneme_prosody_predictor(x)
+            x = x + (self.phoneme_prosody_prj(phoneme_prosody_embeddings) if self.training else
+                    self.phoneme_prosody_prj(phoneme_prosody_vectors))
+            prosody_info = (
+                utterance_prosody_embeddings,
+                phoneme_prosody_embeddings,
+                utterance_prosody_vectors,
+                phoneme_prosody_vectors,
+                phoneme_prosody_attn,
+            )
 
         log_duration_prediction = self.duration_predictor(x, src_mask)
         duration_rounded = torch.clamp(

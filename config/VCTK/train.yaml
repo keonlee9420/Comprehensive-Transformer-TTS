@@ -27,3 +27,6 @@ duration:
   binarization_start_steps: 6000
   binarization_loss_enable_steps: 18000
   binarization_loss_warmup_steps: 10000
+prosody:
+  gmm_mdn_beta: 0.02
+  prosody_loss_enable_steps: 100000

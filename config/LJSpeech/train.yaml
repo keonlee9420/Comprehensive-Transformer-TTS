@@ -4,11 +4,11 @@ dist_config:
   dist_url: "tcp://localhost:54321"
   world_size: 1
 path:
-  ckpt_path: "./output/ckpt/LJSpeech_delightfultts_warmup_joint"
-  log_path: "./output/log/LJSpeech_delightfultts_warmup_joint"
-  result_path: "./output/result/LJSpeech_delightfultts_warmup_joint"
+  ckpt_path: "./output/ckpt/LJSpeech"
+  log_path: "./output/log/LJSpeech"
+  result_path: "./output/result/LJSpeech"
 optimizer:
-  batch_size: 8
+  batch_size: 16
   betas: [0.9, 0.98]
   eps: 0.000000001
   weight_decay: 0.0

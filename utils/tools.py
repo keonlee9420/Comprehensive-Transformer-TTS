@@ -235,7 +235,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         )
 
     phoneme_prosody_attn = None
-    if model_config["learn_prosody"] and model_config["prosody"]["learn_implicit"]:
+    if model_config["prosody"]["learn_type"] == "liu2021":
         if predictions[11][-1] is not None:
             phoneme_prosody_attn = predictions[11][-1][0][:src_len, :mel_len].detach()
 

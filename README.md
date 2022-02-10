@@ -43,7 +43,7 @@ Toggle the type of prosody modelings by
 ```yaml
 # In the model.yaml
 prosody:
-  learn_mixture: True # for (Du et al., 2021)
+  learn_type: "none" # ["du2021", "liu2021", "none"]
 ```
 
 Toggle the type of duration modelings by
@@ -120,7 +120,7 @@ Any of both **single-speaker TTS** dataset (e.g., [Blizzard Challenge 2013](http
 
   For the forced alignment, [Montreal Forced Aligner](https://montreal-forced-aligner.readthedocs.io/en/latest/) (MFA) is used to obtain the alignments between the utterances and the phoneme sequences.
   Pre-extracted alignments for the datasets are provided [here](https://drive.google.com/drive/folders/1fizpyOiQ1lG2UDaMlXnT3Ll4_j6Xwg7K?usp=sharing). 
-  You have to unzip the files in `preprocessed_data/DATASET/TextGrid/`. Alternately, you can [run the aligner by yourself](https://montreal-forced-aligner.readthedocs.io/en/latest/aligning.html).
+  You have to unzip the files in `preprocessed_data/DATASET/TextGrid/`. Alternately, you can [run the aligner by yourself](https://montreal-forced-aligner.readthedocs.io/en/latest/user_guide/workflows/index.html).
 
   After that, run the preprocessing script by
   ```
