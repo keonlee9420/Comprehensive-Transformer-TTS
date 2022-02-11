@@ -23,6 +23,7 @@ step:
   synth_step: 1000
   val_step: 1000
   save_step: 25000
+  var_start_steps: 50000
 duration:
   binarization_start_steps: 6000
   binarization_loss_enable_steps: 18000

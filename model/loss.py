@@ -21,6 +21,7 @@ class CompTransTTSLoss(nn.Module):
         self.binarization_loss_warmup_steps = train_config["duration"]["binarization_loss_warmup_steps"]
         self.gmm_mdn_beta = train_config["prosody"]["gmm_mdn_beta"]
         self.prosody_loss_enable_steps = train_config["prosody"]["prosody_loss_enable_steps"]
+        self.var_start_steps = train_config["step"]["var_start_steps"]
         self.sum_loss = ForwardSumLoss()
         self.bin_loss = BinLoss()
         self.mse_loss = nn.MSELoss()
@@ -141,6 +142,8 @@ class CompTransTTSLoss(nn.Module):
         log_duration_predictions = log_duration_predictions.masked_select(src_masks)
         log_duration_targets = log_duration_targets.masked_select(src_masks)
 
+        duration_loss = pitch_loss = energy_loss = torch.zeros(1).to(mel_targets.device)
+
         mel_predictions = mel_predictions.masked_select(mel_masks.unsqueeze(-1))
         postnet_mel_predictions = postnet_mel_predictions.masked_select(
             mel_masks.unsqueeze(-1)
@@ -149,10 +152,6 @@ class CompTransTTSLoss(nn.Module):
 
         mel_loss = self.mae_loss(mel_predictions, mel_targets)
         postnet_mel_loss = self.mae_loss(postnet_mel_predictions, mel_targets)
-
-        pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
-        energy_loss = self.mse_loss(energy_predictions, energy_targets)
-        duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
 
         ctc_loss = bin_loss = torch.zeros(1).to(mel_targets.device)
         if self.learn_alignment:
@@ -174,9 +173,12 @@ class CompTransTTSLoss(nn.Module):
             prosody_loss += self.mae_loss(
                 pp_tgt.masked_select(src_masks.unsqueeze(-1)), pp_vec.masked_select(src_masks.unsqueeze(-1)))
 
-        total_loss = (
-            mel_loss + postnet_mel_loss + duration_loss + pitch_loss + energy_loss + ctc_loss + bin_loss + prosody_loss
-        )
+        total_loss = mel_loss + postnet_mel_loss + ctc_loss + bin_loss + prosody_loss
+        if step > self.var_start_steps:
+            pitch_loss = self.mse_loss(pitch_predictions, pitch_targets)
+            energy_loss = self.mse_loss(energy_predictions, energy_targets)
+            duration_loss = self.mse_loss(log_duration_predictions, log_duration_targets)
+            total_loss += duration_loss + pitch_loss + energy_loss
 
         return (
             total_loss,
