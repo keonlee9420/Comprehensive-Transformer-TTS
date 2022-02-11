@@ -82,7 +82,7 @@ def get_phoneme_level_energy(duration, energy):
 
 
 def to_device(data, device):
-    if len(data) == 14:
+    if len(data) == 20:
         (
             ids,
             raw_texts,
@@ -94,8 +94,14 @@ def to_device(data, device):
             mel_lens,
             max_mel_len,
             pitches,
+            f0s,
+            uvs,
+            cwt_specs,
+            f0_means,
+            f0_stds,
             energies,
             durations,
+            mel2phs,
             attn_priors,
             spker_embeds,
         ) = data
@@ -105,14 +111,27 @@ def to_device(data, device):
         src_lens = torch.from_numpy(src_lens).to(device)
         mels = torch.from_numpy(mels).float().to(device)
         mel_lens = torch.from_numpy(mel_lens).to(device)
-        pitches = torch.from_numpy(pitches).float().to(device)
+        pitches = torch.from_numpy(pitches).long().to(device)
+        f0s = torch.from_numpy(f0s).float().to(device)
+        uvs = torch.from_numpy(uvs).float().to(device)
+        cwt_specs = torch.from_numpy(cwt_specs).float().to(device) if cwt_specs is not None else cwt_specs
+        f0_means = torch.from_numpy(f0_means).float().to(device) if f0_means is not None else f0_means
+        f0_stds = torch.from_numpy(f0_stds).float().to(device) if f0_stds is not None else f0_stds
         energies = torch.from_numpy(energies).to(device)
-        if durations is not None:
-            durations = torch.from_numpy(durations).long().to(device)
-        if attn_priors is not None:
-            attn_priors = torch.from_numpy(attn_priors).float().to(device)
-        if spker_embeds is not None:
-            spker_embeds = torch.from_numpy(spker_embeds).float().to(device)
+        durations = torch.from_numpy(durations).long().to(device) if durations is not None else durations
+        mel2phs = torch.from_numpy(mel2phs).long().to(device) if mel2phs is not None else mel2phs
+        attn_priors = torch.from_numpy(attn_priors).float().to(device) if attn_priors is not None else attn_priors
+        spker_embeds = torch.from_numpy(spker_embeds).float().to(device) if spker_embeds is not None else spker_embeds
+
+        pitch_data = {
+            "pitch": pitches,
+            "f0": f0s,
+            "uv": uvs,
+            "cwt_spec": cwt_specs,
+            "f0_mean": f0_means,
+            "f0_std": f0_stds,
+            "mel2ph": mel2phs,
+        }
 
         return [
             ids,
@@ -124,7 +143,7 @@ def to_device(data, device):
             mels,
             mel_lens,
             max_mel_len,
-            pitches,
+            pitch_data,
             energies,
             durations,
             attn_priors,

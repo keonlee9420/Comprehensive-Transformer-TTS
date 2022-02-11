@@ -6,7 +6,7 @@ path:
   wav_dir: "wav48_silence_trimmed"
   txt_dir: "txt"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
-  raw_path: "./raw_data/VCTK"
+  raw_path: "/ssd2/implementations/raw_data/VCTK" #"./raw_data/VCTK"
   preprocessed_path: "./preprocessed_data/VCTK"
 
 preprocessing:

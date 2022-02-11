@@ -54,8 +54,8 @@ class Preprocessor:
             preprocess_config["preprocessing"]["mel"]["mel_fmin"],
             preprocess_config["preprocessing"]["mel"]["mel_fmax"],
         )
-        self.val_sup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_sup.txt"))
         self.val_unsup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_unsup.txt"))
+        self.val_sup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_sup.txt"))
         self.speaker_emb = None
         self.in_sub_dirs = [p for p in os.listdir(self.in_dir) if os.path.isdir(os.path.join(self.in_dir, p))]
         if self.multi_speaker and preprocess_config["preprocessing"]["speaker_embedder"] != "none":
@@ -103,7 +103,8 @@ class Preprocessor:
         os.makedirs(embedding_dir, exist_ok=True)
 
         print("Processing Data ...")
-        out = list()
+        out_unsup = list()
+        out_sup = list()
         filtered_out_unsup = set()
         filtered_out_sup = set()
         train_unsup = list()
@@ -203,13 +204,13 @@ class Preprocessor:
                     else:
                         # Save unsupervised duration features
                         if info_unsup is not None:
-                            if self.val_sup_prior is not None:
-                                if basename not in self.val_sup_prior:
+                            if self.val_unsup_prior is not None:
+                                if basename not in self.val_unsup_prior:
                                     train_unsup.append(info_unsup)
                                 else:
                                     val_unsup.append(info_unsup)
                             else:
-                                out.append(info_unsup)
+                                out_unsup.append(info_unsup)
 
                             if len(f0_unsup) > 0:
                                 f0s_unsup.append(f0_unsup)
@@ -218,13 +219,13 @@ class Preprocessor:
                             filtered_out_unsup.add(basename)
                         # Save sup information
                         if info_sup is not None:
-                            if self.val_unsup_prior is not None:
-                                if basename not in self.val_unsup_prior:
+                            if self.val_sup_prior is not None:
+                                if basename not in self.val_sup_prior:
                                     train_sup.append(info_sup)
                                 else:
                                     val_sup.append(info_sup)
                             else:
-                                out.append(info_sup)
+                                out_sup.append(info_sup)
 
                             if len(f0_sup) > 0:
                                 f0s_sup.append(f0_sup)
@@ -304,42 +305,42 @@ class Preprocessor:
 
         # Save dataset
         filtered_out_unsup, filtered_out_sup = list(filtered_out_unsup), list(filtered_out_sup)
-        if self.val_sup_prior is not None:
-            assert len(out) == 0
-            random.shuffle(train_sup)
-            train_sup = [r for r in train_sup if r is not None]
-            val_sup = [r for r in val_sup if r is not None]
-        else:
-            assert len(train_sup) == 0 and len(val_sup) == 0
-            random.shuffle(out)
-            out = [r for r in out if r is not None]
-            train_sup = out[self.val_size :]
-            val_sup = out[: self.val_size]
-
         if self.val_unsup_prior is not None:
-            assert len(out) == 0
+            assert len(out_unsup) == 0
             random.shuffle(train_unsup)
             train_unsup = [r for r in train_unsup if r is not None]
             val_unsup = [r for r in val_unsup if r is not None]
         else:
             assert len(train_unsup) == 0 and len(val_unsup) == 0
-            random.shuffle(out)
-            out = [r for r in out if r is not None]
-            train_unsup = out[self.val_size :]
-            val_unsup = out[: self.val_size]
+            random.shuffle(out_unsup)
+            out_unsup = [r for r in out_unsup if r is not None]
+            train_unsup = out_unsup[self.val_size :]
+            val_unsup = out_unsup[: self.val_size]
+
+        if self.val_sup_prior is not None:
+            assert len(out_sup) == 0
+            random.shuffle(train_sup)
+            train_sup = [r for r in train_sup if r is not None]
+            val_sup = [r for r in val_sup if r is not None]
+        else:
+            assert len(train_sup) == 0 and len(val_sup) == 0
+            random.shuffle(out_sup)
+            out_sup = [r for r in out_sup if r is not None]
+            train_sup = out_sup[self.val_size :]
+            val_sup = out_sup[: self.val_size]
 
         # Write metadata
-        with open(os.path.join(self.out_dir, "train_sup.txt"), "w", encoding="utf-8") as f:
-            for m in train_sup:
-                f.write(m + "\n")
-        with open(os.path.join(self.out_dir, "val_sup.txt"), "w", encoding="utf-8") as f:
-            for m in val_sup:
-                f.write(m + "\n")
         with open(os.path.join(self.out_dir, "train_unsup.txt"), "w", encoding="utf-8") as f:
             for m in train_unsup:
                 f.write(m + "\n")
         with open(os.path.join(self.out_dir, "val_unsup.txt"), "w", encoding="utf-8") as f:
             for m in val_unsup:
+                f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "train_sup.txt"), "w", encoding="utf-8") as f:
+            for m in train_sup:
+                f.write(m + "\n")
+        with open(os.path.join(self.out_dir, "val_sup.txt"), "w", encoding="utf-8") as f:
+            for m in val_sup:
                 f.write(m + "\n")
         with open(os.path.join(self.out_dir, "filtered_out_unsup.txt"), "w", encoding="utf-8") as f:
             for m in sorted(filtered_out_unsup):
@@ -348,7 +349,7 @@ class Preprocessor:
             for m in sorted(filtered_out_sup):
                 f.write(str(m) + "\n")
 
-        return out
+        return out_unsup, out_sup
 
     def load_audio(self, wav_path):
         wav_raw, _ = librosa.load(wav_path, self.sampling_rate)
@@ -381,50 +382,56 @@ class Preprocessor:
         # Compute pitch
         if self.with_f0:
             f0_unsup, pitch_unsup = self.get_pitch(wav, mel_spectrogram.T)
-            f0_unsup = f0_unsup[:duration]
-            pitch_unsup = pitch_unsup[:duration]
-            if self.with_f0cwt:
-                cwt_spec_unsup, cwt_scales_unsup, f0cwt_mean_std_unsup = self.get_f0cwt(f0_unsup)
+            if sum(f0_unsup) == 0:
+                unsup_out_exist = False
+            else:
+                f0_unsup = f0_unsup[: duration]
+                pitch_unsup = pitch_unsup[: duration]
+                if self.with_f0cwt:
+                    cwt_spec_unsup, cwt_scales_unsup, f0cwt_mean_std_unsup = self.get_f0cwt(f0_unsup)
+                    if np.any(np.isnan(cwt_spec_unsup)):
+                        unsup_out_exist = False
 
-        # Compute alignment prior
-        attn_prior = self.beta_binomial_prior_distribution(
-            mel_spectrogram.shape[1],
-            len(phone),
-            self.beta_binomial_scaling_factor,
-        )
+        if unsup_out_exist:
+            # Compute alignment prior
+            attn_prior = self.beta_binomial_prior_distribution(
+                mel_spectrogram.shape[1],
+                len(phone),
+                self.beta_binomial_scaling_factor,
+            )
 
-        # Frame-level variance
-        energy_unsup_frame = copy.deepcopy(energy)
+            # Frame-level variance
+            energy_unsup_frame = copy.deepcopy(energy)
 
-        mel_spectrogram_unsup = copy.deepcopy(mel_spectrogram)
+            mel_spectrogram_unsup = copy.deepcopy(mel_spectrogram)
 
-        # Save files
-        attn_prior_filename = "{}-attn_prior-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "attn_prior", attn_prior_filename), attn_prior)
+            # Save files
+            attn_prior_filename = "{}-attn_prior-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "attn_prior", attn_prior_filename), attn_prior)
 
-        f0_filename = "{}-f0-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "f0_unsup", f0_filename), f0_unsup)
+            f0_filename = "{}-f0-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "f0_unsup", f0_filename), f0_unsup)
 
-        pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "pitch_unsup", pitch_filename), pitch_unsup)
+            pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "pitch_unsup", pitch_filename), pitch_unsup)
 
-        cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "cwt_spec_unsup", cwt_spec_filename), cwt_spec_unsup)
+            cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "cwt_spec_unsup", cwt_spec_filename), cwt_spec_unsup)
 
-        cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "cwt_scales_unsup", cwt_scales_filename), cwt_scales_unsup)
+            cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "cwt_scales_unsup", cwt_scales_filename), cwt_scales_unsup)
 
-        f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "f0cwt_mean_std_unsup", f0cwt_mean_std_filename), f0cwt_mean_std_unsup)
+            f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "f0cwt_mean_std_unsup", f0cwt_mean_std_filename), f0cwt_mean_std_unsup)
 
-        energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "energy_unsup_frame", energy_frame_filename), energy_unsup_frame)
+            energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "energy_unsup_frame", energy_frame_filename), energy_unsup_frame)
 
-        mel_unsup_filename = "{}-mel-{}.npy".format(speaker, basename)
-        np.save(
-            os.path.join(self.out_dir, "mel_unsup", mel_unsup_filename),
-            mel_spectrogram_unsup.T,
-        )
+            mel_unsup_filename = "{}-mel-{}.npy".format(speaker, basename)
+            np.save(
+                os.path.join(self.out_dir, "mel_unsup", mel_unsup_filename),
+                mel_spectrogram_unsup.T,
+            )
 
         # Supervised duration features
         if os.path.exists(tg_path):
@@ -452,57 +459,63 @@ class Preprocessor:
                 # Compute pitch
                 if self.with_f0:
                     f0_sup, pitch_sup = self.get_pitch(wav, mel_spectrogram.T)
-                    f0_sup = f0_sup[:sum(duration)]
-                    pitch_sup = pitch_sup[:sum(duration)]
-                    if self.with_f0cwt:
-                        cwt_spec_sup, cwt_scales_sup, f0cwt_mean_std_sup = self.get_f0cwt(f0_sup)
+                    if sum(f0_unsup) == 0:
+                        sup_out_exist = False
+                    else:
+                        f0_sup = f0_sup[: sum(duration)]
+                        pitch_sup = pitch_sup[: sum(duration)]
+                        if self.with_f0cwt:
+                            cwt_spec_sup, cwt_scales_sup, f0cwt_mean_std_sup = self.get_f0cwt(f0_sup)
+                            if np.any(np.isnan(cwt_spec_sup)):
+                                sup_out_exist = False
 
-                # Frame-level variance
-                energy_sup_frame = copy.deepcopy(energy)
+                if sup_out_exist:
+                    # Frame-level variance
+                    energy_sup_frame = copy.deepcopy(energy)
 
-                # Phone-level variance
-                energy_sup_phone = get_phoneme_level_energy(duration, energy)
+                    # Phone-level variance
+                    energy_sup_phone = get_phoneme_level_energy(duration, energy)
 
-                mel_spectrogram_sup = copy.deepcopy(mel_spectrogram)
+                    mel_spectrogram_sup = copy.deepcopy(mel_spectrogram)
 
-                # Save files
-                dur_filename = "{}-duration-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
+                    # Save files
+                    dur_filename = "{}-duration-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "duration", dur_filename), duration)
 
-                mel2ph_filename = "{}-mel2ph-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "mel2ph", mel2ph_filename), mel2ph)
+                    mel2ph_filename = "{}-mel2ph-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "mel2ph", mel2ph_filename), mel2ph)
 
-                f0_filename = "{}-f0-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "f0_sup", f0_filename), f0_sup)
+                    f0_filename = "{}-f0-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "f0_sup", f0_filename), f0_sup)
 
-                pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "pitch_sup", pitch_filename), pitch_sup)
+                    pitch_filename = "{}-pitch-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "pitch_sup", pitch_filename), pitch_sup)
 
-                cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "cwt_spec_sup", cwt_spec_filename), cwt_spec_sup)
+                    cwt_spec_filename = "{}-cwt_spec-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "cwt_spec_sup", cwt_spec_filename), cwt_spec_sup)
 
-                cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "cwt_scales_sup", cwt_scales_filename), cwt_scales_sup)
+                    cwt_scales_filename = "{}-cwt_scales-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "cwt_scales_sup", cwt_scales_filename), cwt_scales_sup)
 
-                f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "f0cwt_mean_std_sup", f0cwt_mean_std_filename), f0cwt_mean_std_sup)
+                    f0cwt_mean_std_filename = "{}-f0cwt_mean_std-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "f0cwt_mean_std_sup", f0cwt_mean_std_filename), f0cwt_mean_std_sup)
 
-                energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "energy_sup_frame", energy_frame_filename), energy_sup_frame)
+                    energy_frame_filename = "{}-energy-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "energy_sup_frame", energy_frame_filename), energy_sup_frame)
 
-                energy_phone_filename = "{}-energy-{}.npy".format(speaker, basename)
-                np.save(os.path.join(self.out_dir, "energy_sup_phone", energy_phone_filename), energy_sup_phone)
+                    energy_phone_filename = "{}-energy-{}.npy".format(speaker, basename)
+                    np.save(os.path.join(self.out_dir, "energy_sup_phone", energy_phone_filename), energy_sup_phone)
 
-                mel_sup_filename = "{}-mel-{}.npy".format(speaker, basename)
-                np.save(
-                    os.path.join(self.out_dir, "mel_sup", mel_sup_filename),
-                    mel_spectrogram_sup.T,
-                )
+                    mel_sup_filename = "{}-mel-{}.npy".format(speaker, basename)
+                    np.save(
+                        os.path.join(self.out_dir, "mel_sup", mel_sup_filename),
+                        mel_spectrogram_sup.T,
+                    )
         else:
             sup_out_exist = False
 
         if not sup_out_exist and not unsup_out_exist:
-            return tuple([None]*10)
+            return tuple([None]*13)
         else:
             return (
                 "|".join([basename, speaker, text_unsup, raw_text]) if unsup_out_exist else None,
@@ -579,8 +592,6 @@ class Preprocessor:
 
     def get_pitch(self, wav, mel):
         f0, pitch_coarse = get_pitch(wav, mel, self.preprocess_config)
-        if sum(f0) == 0:
-            raise PreprocessError("Empty f0")
         return f0, pitch_coarse
 
     def get_f0cwt(self, f0):
@@ -589,8 +600,6 @@ class Preprocessor:
         logf0s_mean_std_org = np.array([logf0s_mean_org, logf0s_std_org])
         cont_lf0_lpf_norm = (cont_lf0_lpf - logf0s_mean_org) / logf0s_std_org
         Wavelet_lf0, scales = get_lf0_cwt(cont_lf0_lpf_norm)
-        if np.any(np.isnan(Wavelet_lf0)):
-            raise PreprocessError("NaN CWT")
         return Wavelet_lf0, scales, logf0s_mean_std_org
 
     def remove_outlier(self, values):

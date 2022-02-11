@@ -35,8 +35,10 @@ def train(rank, args, configs, batch_size, num_gpus):
     device = torch.device('cuda:{:d}'.format(rank))
 
     # Get dataset
+    learn_alignment = model_config["duration_modeling"]["learn_alignment"]
+    dataset_tag = "unsup" if learn_alignment else "sup"
     dataset = Dataset(
-        "train.txt", preprocess_config, model_config, train_config, sort=True, drop_last=True
+        "train_{}.txt".format(dataset_tag), preprocess_config, model_config, train_config, sort=True, drop_last=True
     )
     data_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
     group_size = 4  # Set this larger than 1 to enable sorting in Dataset

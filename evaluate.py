@@ -16,8 +16,10 @@ def evaluate(device, model, step, configs, logger=None, vocoder=None, len_losses
     preprocess_config, model_config, train_config = configs
 
     # Get dataset
+    learn_alignment = model_config["duration_modeling"]["learn_alignment"]
+    dataset_tag = "unsup" if learn_alignment else "sup"
     dataset = Dataset(
-        "val.txt", preprocess_config, model_config, train_config, sort=False, drop_last=False
+        "val_{}.txt".format(dataset_tag), preprocess_config, model_config, train_config, sort=False, drop_last=False
     )
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
