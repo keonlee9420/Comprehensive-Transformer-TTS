@@ -979,16 +979,18 @@ class VarianceAdaptor(nn.Module):
 
         # Note that there is no pre-extracted phoneme-level variance features in unsupervised duration modeling.
         # Alternatively, we can use attn_hard_dur instead of duration_target for computing phoneme-level variances.
+        output_1 = x.clone()
         if self.pitch_feature_level == "phoneme_level":
             if attn_prior is not None:
                 pitch_target = self.get_phoneme_level_pitch(attn_hard_dur, src_len, pitch_target)
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(x, pitch_target, src_mask, p_control)
-            x = x + pitch_embedding
+            output_1 = output_1 + pitch_embedding
         if self.energy_feature_level == "phoneme_level":
             if attn_prior is not None:
                 energy_target = self.get_phoneme_level_energy(attn_hard_dur, src_len, energy_target)
             energy_prediction, energy_embedding = self.get_energy_embedding(x, energy_target, src_mask, e_control)
-            x = x + energy_embedding
+            output_1 = output_1 + energy_embedding
+        x = output_1.clone()
 
         # Upsampling from src length to mel length
         if attn_prior is not None: # Trainig of unsupervised duration modeling
@@ -1007,12 +1009,14 @@ class VarianceAdaptor(nn.Module):
             x, mel_len = self.length_regulator(x, duration_rounded, max_len)
             mel_mask = get_mask_from_lengths(mel_len)
 
+        output_2 = x.clone()
         if self.pitch_feature_level == "frame_level":
             pitch_prediction, pitch_embedding = self.get_pitch_embedding(x, pitch_target, mel_mask, p_control)
-            x = x + pitch_embedding
+            output_2 = output_2 + pitch_embedding
         if self.energy_feature_level == "frame_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(x, energy_target, mel_mask, e_control)
-            x = x + energy_embedding
+            output_2 = output_2 + energy_embedding
+        x = output_2.clone()
 
         return (
             x,
