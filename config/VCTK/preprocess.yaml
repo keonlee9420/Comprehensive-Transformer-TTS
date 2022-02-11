@@ -32,8 +32,18 @@ preprocessing:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
 
+    pitch_type: "cwt" # support 'frame', 'ph', 'cwt'
+    pitch_norm: "log" # support 'standard', 'log'
+    pitch_norm_eps: 0.000000001
+    pitch_ar: False
     with_f0: True
     with_f0cwt: True
+    use_uv: True
+    f0_unsup_mean: 173.75402717802498 # need to be updated after running preprocessor
+    f0_unsup_std: 74.34219239259376 # need to be updated after running preprocessor
+    f0_sup_mean: 173.7440893829976 # need to be updated after running preprocessor
+    f0_sup_std: 73.06925429829342 # need to be updated after running preprocessor
+    cwt_scales: -1
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True

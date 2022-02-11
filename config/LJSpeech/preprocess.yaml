@@ -34,10 +34,10 @@ preprocessing:
     with_f0: True
     with_f0cwt: True
     use_uv: True
-    f0_unsup_mean: -1 # need to be updated after running preprocessor
-    f0_unsup_std: -1 # need to be updated after running preprocessor
-    f0_sup_mean: -1 # need to be updated after running preprocessor
-    f0_sup_std: -1 # need to be updated after running preprocessor
+    f0_unsup_mean: 214.26887557735233 # need to be updated after running preprocessor
+    f0_unsup_std: 63.952911937350315 # need to be updated after running preprocessor
+    f0_sup_mean: 214.31683793056987 # need to be updated after running preprocessor
+    f0_sup_std: 63.97520977575227 # need to be updated after running preprocessor
     cwt_scales: -1
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
