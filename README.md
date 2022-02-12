@@ -126,7 +126,6 @@ Any of both **single-speaker TTS** dataset (e.g., [Blizzard Challenge 2013](http
   ```
   python3 preprocess.py --dataset DATASET
   ```
-- Update **f0_unsup_\***, **f0_sup_\*** values in `preprocess.yaml` as `preprocessed_data/DATASET/stats.json`.
 
 ## Training
 

@@ -3,7 +3,7 @@ dataset: "LJSpeech"
 path:
   corpus_path: "/home/keon/speech-datasets/en/LJSpeech-1.1"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
-  raw_path: "/ssd2/implementations/raw_data/LJSpeech_22k" #"./raw_data/LJSpeech"
+  raw_path: "./raw_data/LJSpeech"
   preprocessed_path: "./preprocessed_data/LJSpeech"
 
 preprocessing:
@@ -24,9 +24,6 @@ preprocessing:
     mel_fmin: 0
     mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
   pitch:
-    feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
-    normalization: True
-  
     pitch_type: "cwt" # support 'frame', 'ph', 'cwt'
     pitch_norm: "log" # support 'standard', 'log'
     pitch_norm_eps: 0.000000001
@@ -34,10 +31,6 @@ preprocessing:
     with_f0: True
     with_f0cwt: True
     use_uv: True
-    f0_unsup_mean: 214.26887557735233 # need to be updated after running preprocessor
-    f0_unsup_std: 63.952911937350315 # need to be updated after running preprocessor
-    f0_sup_mean: 214.31683793056987 # need to be updated after running preprocessor
-    f0_sup_std: 63.97520977575227 # need to be updated after running preprocessor
     cwt_scales: -1
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'

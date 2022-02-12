@@ -4,6 +4,7 @@
 import librosa
 import parselmouth
 import numpy as np
+import pyworld as pw
 import torch
 import torch.nn.functional as F
 from pycwt import wavelet
@@ -105,6 +106,28 @@ def get_pitch(wav_data, mel, config):
     f0 = parselmouth.Sound(wav_data, sampling_rate).to_pitch_ac(
         time_step=time_step / 1000, voicing_threshold=0.6,
         pitch_floor=f0_min, pitch_ceiling=f0_max).selected_array["frequency"]
+    f0 = f0[:len(mel)-8] # to avoid negative rpad
+    lpad = pad_size * 2
+    rpad = len(mel) - len(f0) - lpad
+    f0 = np.pad(f0, [[lpad, rpad]], mode="constant")
+    # mel and f0 are extracted by 2 different libraries. we should force them to have the same length.
+    # Attention: we find that new version of some libraries could cause ``rpad'' to be a negetive value...
+    # Just to be sure, we recommend users to set up the same environments as them in requirements_auto.txt (by Anaconda)
+    delta_l = len(mel) - len(f0)
+    assert np.abs(delta_l) <= 8
+    if delta_l > 0:
+        f0 = np.concatenate([f0, [f0[-1]] * delta_l], 0)
+    f0 = f0[:len(mel)]
+
+    # f0, t = pw.dio(
+    #     wav_data.astype(np.float64),
+    #     sampling_rate,
+    #     frame_period=hop_length / sampling_rate * 1000,
+    # )
+    # f0 = pw.stonemask(wav_data.astype(np.float64), f0, t, sampling_rate)
+    # if np.sum(f0 != 0) <= 1:
+    #     return None, None
+
     pitch_coarse = f0_to_coarse(f0)
     return f0, pitch_coarse
 

@@ -18,7 +18,7 @@ import audio as Audio
 from model import PreDefinedEmbedder
 from text import grapheme_to_phoneme
 from utils.pitch_tools import get_pitch, get_cont_lf0, get_lf0_cwt
-from utils.tools import get_phoneme_level_pitch, get_phoneme_level_energy, plot_embedding
+from utils.tools import get_phoneme_level_energy, plot_embedding, spec_f0_to_figure
 
 
 class Preprocessor:
@@ -54,6 +54,15 @@ class Preprocessor:
             preprocess_config["preprocessing"]["mel"]["mel_fmin"],
             preprocess_config["preprocessing"]["mel"]["mel_fmax"],
         )
+        # self.STFT = Audio.stft.FastSpeechSTFT(
+        #     preprocess_config["preprocessing"]["stft"]["filter_length"],
+        #     preprocess_config["preprocessing"]["stft"]["hop_length"],
+        #     preprocess_config["preprocessing"]["stft"]["win_length"],
+        #     preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
+        #     preprocess_config["preprocessing"]["audio"]["sampling_rate"],
+        #     preprocess_config["preprocessing"]["mel"]["mel_fmin"],
+        #     preprocess_config["preprocessing"]["mel"]["mel_fmax"],
+        # )
         self.val_unsup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_unsup.txt"))
         self.val_sup_prior = self.val_prior_names(os.path.join(self.out_dir, "val_sup.txt"))
         self.speaker_emb = None
@@ -376,21 +385,24 @@ class Preprocessor:
 
         # Compute mel-scale spectrogram and energy
         mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+        # wav, mel_spectrogram, energy = self.STFT.mel_spectrogram(wav)
         mel_spectrogram = mel_spectrogram[:, : duration]
         energy = energy[: duration]
 
         # Compute pitch
         if self.with_f0:
             f0_unsup, pitch_unsup = self.get_pitch(wav, mel_spectrogram.T)
-            if sum(f0_unsup) == 0:
+            if f0_unsup is None or sum(f0_unsup) == 0:
                 unsup_out_exist = False
             else:
+                # spec_f0_to_figure(mel_spectrogram.T, {"f0_unsup":f0_unsup}, filename=os.path.join(self.out_dir, f"{basename}_unsup.png"))
                 f0_unsup = f0_unsup[: duration]
                 pitch_unsup = pitch_unsup[: duration]
                 if self.with_f0cwt:
                     cwt_spec_unsup, cwt_scales_unsup, f0cwt_mean_std_unsup = self.get_f0cwt(f0_unsup)
                     if np.any(np.isnan(cwt_spec_unsup)):
                         unsup_out_exist = False
+                assert mel_spectrogram.shape[1] == len(f0_unsup)
 
         if unsup_out_exist:
             # Compute alignment prior
@@ -453,21 +465,24 @@ class Preprocessor:
 
                 # Compute mel-scale spectrogram and energy
                 mel_spectrogram, energy = Audio.tools.get_mel_from_wav(wav, self.STFT)
+                # wav, mel_spectrogram, energy = self.STFT.mel_spectrogram(wav)
                 mel_spectrogram = mel_spectrogram[:, : sum(duration)]
                 energy = energy[: sum(duration)]
 
                 # Compute pitch
                 if self.with_f0:
                     f0_sup, pitch_sup = self.get_pitch(wav, mel_spectrogram.T)
-                    if sum(f0_unsup) == 0:
+                    if f0_sup is None or sum(f0_unsup) == 0:
                         sup_out_exist = False
                     else:
+                        # spec_f0_to_figure(mel_spectrogram.T, {"f0_sup":f0_sup}, filename=os.path.join(self.out_dir, f"{basename}_sup.png"))
                         f0_sup = f0_sup[: sum(duration)]
                         pitch_sup = pitch_sup[: sum(duration)]
                         if self.with_f0cwt:
                             cwt_spec_sup, cwt_scales_sup, f0cwt_mean_std_sup = self.get_f0cwt(f0_sup)
                             if np.any(np.isnan(cwt_spec_sup)):
                                 sup_out_exist = False
+                        assert mel_spectrogram.shape[1] == len(f0_sup)
 
                 if sup_out_exist:
                     # Frame-level variance
