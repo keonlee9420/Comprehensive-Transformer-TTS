@@ -10,6 +10,7 @@ librosa==0.7.2
 matplotlib==3.2.2
 numba==0.48.0
 numpy==1.19.4
+pyloudnorm==0.1.0
 pypinyin==0.39.0
 pyworld==0.3.0
 pycwt==0.3.0a22

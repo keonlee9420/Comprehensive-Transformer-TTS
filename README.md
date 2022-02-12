@@ -2,6 +2,10 @@
 
 **A Non-Autoregressive Transformer** based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**. Any suggestions toward the best Non-AR TTS are welcome :)
 
+### Updates
+- Feb.XX, 2022 (v0.2.0): Update data preprocessor and variance adaptor and its loss following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
+- Sep.21, 2021 (v0.1.1): Initialize with [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
+
 ### Transformers
 - [x] [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) (Wu et al., 2021)
 - [x] [Long-Short Transformer: Efficient Transformers for Language and Vision](https://arxiv.org/abs/2107.02192) (Zhu et al., 2021)
@@ -147,15 +151,14 @@ tensorboard --logdir output/log
 to serve TensorBoard on your localhost.
 The loss curves, synthesized mel-spectrograms, and audios are shown.
 
-![](./img/tensorboard_loss.png)
+<!-- ![](./img/tensorboard_loss.png)
 ![](./img/tensorboard_spec.png)
-![](./img/tensorboard_audio.png)
+![](./img/tensorboard_audio.png) -->
 
 # Notes
 
 - Both phoneme-level and frame-level variance are supported in both supervised and unsupervised duration modeling.
 - Note that there are no pre-extracted phoneme-level variance features in unsupervised duration modeling.
-- Convolutional embedding is used as [StyleSpeech](https://github.com/keonlee9420/StyleSpeech) for phoneme-level variance in unsupervised duration modeling. Otherwise, bucket-based embedding is used as [FastSpeech2](https://github.com/ming024/FastSpeech2).
 - Unsupervised duration modeling in phoneme-level will take longer time than frame-level since the additional computation of phoneme-level variance is activated at runtime.
 - Two options for embedding for the **multi-speaker TTS** setting: training speaker embedder from scratch or using a pre-trained [philipperemy's DeepSpeaker](https://github.com/philipperemy/deep-speaker) model (as [STYLER](https://github.com/keonlee9420/STYLER) did). You can toggle it by setting the config (between `'none'` and `'DeepSpeaker'`).
 - DeepSpeaker on VCTK dataset shows clear identification among speakers. The following figure shows the T-SNE plot of extracted speaker embedding.
@@ -180,4 +183,5 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [sagelywizard's pytorch-mdn](https://github.com/sagelywizard/pytorch-mdn)
 - [keonlee9420's Robust_Fine_Grained_Prosody_Control](https://github.com/keonlee9420/Robust_Fine_Grained_Prosody_Control)
 - [keonlee9420's Cross-Speaker-Emotion-Transfer](https://github.com/keonlee9420/Cross-Speaker-Emotion-Transfer)
+- [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger)
 - [NVIDIA's NeMo](https://github.com/NVIDIA/NeMo): Special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.

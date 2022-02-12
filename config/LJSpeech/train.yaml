@@ -17,6 +17,17 @@ optimizer:
   warm_up_step: 4000
   anneal_steps: [300000, 400000, 500000]
   anneal_rate: 0.3
+loss:
+  noise_loss: "l1"
+  dur_loss: "mse"
+  pitch_loss: "l1"
+  cwt_loss: "l1"
+  # cwt_add_f0_loss: false
+  lambda_f0: 1.0
+  lambda_uv: 1.0
+  lambda_ph_dur: 1.0
+  lambda_word_dur: 1.0
+  lambda_sent_dur: 1.0
 step:
   total_step: 900000
   log_step: 100

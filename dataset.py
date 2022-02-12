@@ -24,7 +24,7 @@ class Dataset(Dataset):
         self.load_spker_embed = model_config["multi_speaker"] \
             and preprocess_config["preprocessing"]["speaker_embedder"] != 'none'
 
-        self.pitch_level_tag, self.energy_level_tag, *_ = get_variance_level(preprocess_config, model_config)
+        self.energy_level_tag, *_ = get_variance_level(preprocess_config, model_config)
 
         self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
             filename
@@ -36,10 +36,14 @@ class Dataset(Dataset):
 
         # pitch stats
         self.pitch_type = preprocess_config["preprocessing"]["pitch"]["pitch_type"]
-        self.f0_unsup_mean = float(preprocess_config["preprocessing"]["pitch"]["f0_unsup_mean"])
-        self.f0_unsup_std = float(preprocess_config["preprocessing"]["pitch"]["f0_unsup_std"])
-        self.f0_sup_mean = float(preprocess_config["preprocessing"]["pitch"]["f0_sup_mean"])
-        self.f0_sup_std = float(preprocess_config["preprocessing"]["pitch"]["f0_sup_std"])
+        with open(
+            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+        ) as f:
+            stats = json.load(f)
+            self.f0_unsup_mean = float(stats["f0_unsup"][0])
+            self.f0_unsup_std = float(stats["f0_unsup"][1])
+            self.f0_sup_mean = float(stats["f0_sup"][0])
+            self.f0_sup_std = float(stats["f0_sup"][1])
 
     def __len__(self):
         return len(self.text)
