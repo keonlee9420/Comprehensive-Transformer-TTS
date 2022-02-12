@@ -46,8 +46,8 @@ block_type: "transformer_fs2" # ["transformer_fs2", "transformer", "fastformer",
 Toggle the type of prosody modelings by
 ```yaml
 # In the model.yaml
-prosody:
-  learn_type: "none" # ["du2021", "liu2021", "none"]
+prosody_modeling:
+  model_type: "none" # ["du2021", "liu2021", "none"]
 ```
 
 Toggle the type of duration modelings by

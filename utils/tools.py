@@ -225,7 +225,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
         )
 
     phoneme_prosody_attn = None
-    if model_config["prosody"]["learn_type"] == "liu2021":
+    if model_config["prosody_modeling"]["model_type"] == "liu2021":
         if predictions[11][-1] is not None:
             phoneme_prosody_attn = predictions[11][-1][0][:src_len, :mel_len].detach()
 
@@ -272,14 +272,14 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
 
     figs["mel"] = plot_mel(
         [
-            mel_target.cpu().numpy(),
             mel_prediction.cpu().numpy(),
+            mel_target.cpu().numpy(),
             phoneme_prosody_attn.cpu().numpy(),
         ] if phoneme_prosody_attn is not None else [
-            mel_target.cpu().numpy(),
             mel_prediction.cpu().numpy(),
+            mel_target.cpu().numpy(),
         ],
-        ["Ground-Truth Spectrogram", "Synthetized Spectrogram", "Prosody Alignment"],
+        ["Synthetized Spectrogram", "Ground-Truth Spectrogram", "Prosody Alignment"],
         n_attn=1 if phoneme_prosody_attn is not None else 0,
     )
 
@@ -355,7 +355,7 @@ def plot_mel(data, titles, n_attn=0, save_dir=None):
         plot_mel_(fig, axes, data[:-n_attn], titles)
 
         # Plot Alignment
-        xlim = data[0][0].shape[1]
+        xlim = data[0].shape[1]
         for i in range(-n_attn, 0):
             im = axes[i][0].imshow(data[i], origin='lower', aspect='auto')
             axes[i][0].set_xlabel('Decoder timestep')

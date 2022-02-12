@@ -244,7 +244,7 @@ if __name__ == "__main__":
     print(' ---> Batch size in total:', batch_size * num_gpus)
     print(" ---> Type of Building Block:", model_config["block_type"])
     print(" ---> Type of Duration Modeling:", "unsupervised" if model_config["duration_modeling"]["learn_alignment"] else "supervised")
-    print(" ---> Type of Prosody Modeling:", model_config["prosody"]["learn_type"])
+    print(" ---> Type of Prosody Modeling:", model_config["prosody_modeling"]["model_type"])
     print("=================================================================================================")
     print("Prepare training ...")
 

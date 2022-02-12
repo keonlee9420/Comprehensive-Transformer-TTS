@@ -19,7 +19,7 @@ class CompTransTTSLoss(nn.Module):
         self.pitch_type = self.pitch_config["pitch_type"]
         self.use_pitch_embed = model_config["variance_embedding"]["use_pitch_embed"]
         self.use_energy_embed = model_config["variance_embedding"]["use_energy_embed"]
-        self.learn_type = model_config["prosody"]["learn_type"]
+        self.model_type = model_config["prosody_modeling"]["model_type"]
         self.learn_alignment = model_config["duration_modeling"]["learn_alignment"]
         self.binarization_loss_enable_steps = train_config["duration"]["binarization_loss_enable_steps"]
         self.binarization_loss_warmup_steps = train_config["duration"]["binarization_loss_warmup_steps"]
@@ -313,10 +313,10 @@ class CompTransTTSLoss(nn.Module):
             bin_loss = self.bin_loss(hard_attention=attn_hard, soft_attention=attn_soft) * bin_loss_weight
 
         prosody_loss = torch.zeros(1).to(mel_targets.device)
-        if self.training and self.learn_type == "du2021" and step > self.prosody_loss_enable_steps:
+        if self.training and self.model_type == "du2021" and step > self.prosody_loss_enable_steps:
             w, sigma, mu, prosody_embeddings = prosody_info
             prosody_loss = self.gmm_mdn_beta * self.mdn_loss(w, sigma, mu, prosody_embeddings.detach(), ~src_masks)
-        elif self.training and self.learn_type == "liu2021" and step > self.prosody_loss_enable_steps:
+        elif self.training and self.model_type == "liu2021" and step > self.prosody_loss_enable_steps:
             up_tgt, pp_tgt, up_vec, pp_vec, _ = prosody_info
             prosody_loss = F.l1_loss(up_tgt, up_vec)
             # prosody_loss = F.l1_loss(
