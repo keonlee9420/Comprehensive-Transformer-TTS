@@ -16,7 +16,9 @@ class CompTransTTS(nn.Module):
         super(CompTransTTS, self).__init__()
         self.model_config = model_config
 
-        if model_config["block_type"] == "transformer":
+        if model_config["block_type"] == "transformer_fs2":
+            from .transformers.transformer_fs2 import TextEncoder, Decoder
+        elif model_config["block_type"] == "transformer":
             from .transformers.transformer import TextEncoder, Decoder
         elif model_config["block_type"] == "lstransformer":
             from .transformers.lstransformer import TextEncoder, Decoder

@@ -1,4 +1,4 @@
-block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer", "reformer"]
+block_type: "transformer_fs2" # ["transformer_fs2", "transformer", "fastformer", "lstransformer", "conformer", "reformer"]
 
 duration_modeling:
   learn_alignment: True
@@ -29,6 +29,17 @@ prosody:
     token_num: 32
     predictor_kernel_size: 3 # [9, 5] for non-parallel predictor / 3 for parallel predictor
     predictor_dropout: 0.5
+
+transformer_fs2:
+  encoder_layer: 4
+  encoder_head: 2
+  encoder_hidden: 256
+  decoder_layer: 6
+  decoder_head: 2
+  decoder_hidden: 256
+  ffn_kernel_size: 9
+  encoder_dropout: 0.1
+  decoder_dropout: 0.1
 
 transformer:
   encoder_layer: 4

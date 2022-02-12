@@ -15,6 +15,14 @@ def Embedding(num_embeddings, embedding_dim, padding_idx=None):
     return m
 
 
+def Linear(in_features, out_features, bias=True):
+    m = nn.Linear(in_features, out_features, bias)
+    nn.init.xavier_uniform_(m.weight)
+    if bias:
+        nn.init.constant_(m.bias, 0.)
+    return m
+
+
 def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
     """ Sinusoid position encoding table """
 

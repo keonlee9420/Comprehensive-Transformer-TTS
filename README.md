@@ -3,7 +3,7 @@
 **A Non-Autoregressive Transformer** based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**. Any suggestions toward the best Non-AR TTS are welcome :)
 
 ### Updates
-- Feb.XX, 2022 (v0.2.0): Update data preprocessor and variance adaptor and its loss following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
+- Feb.XX, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
 - Sep.21, 2021 (v0.1.1): Initialize with [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
 
 ### Transformers
@@ -40,7 +40,7 @@
 Toggle the type of building blocks by
 ```yaml
 # In the model.yaml
-block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer", "reformer"]
+block_type: "transformer_fs2" # ["transformer_fs2", "transformer", "fastformer", "lstransformer", "conformer", "reformer"]
 ```
 
 Toggle the type of prosody modelings by
@@ -70,7 +70,7 @@ Also, `Dockerfile` is provided for `Docker` users.
 
 ## Inference
 
-You have to download the [pretrained models](https://drive.google.com/drive/folders/1xEOVbv3PLfGX8EgEkzg1014c9h8QMxQ-?usp=sharing) and put them in `output/ckpt/DATASET/`. The models are trained with unsupervised duration modeling under transformer building block.
+You have to download the [pretrained models](https://drive.google.com/drive/folders/1xEOVbv3PLfGX8EgEkzg1014c9h8QMxQ-?usp=sharing) and put them in `output/ckpt/DATASET/`. The models are trained under unsupervised duration modeling with "transformer_fs2" building block.
 
 For a **single-speaker TTS**, run
 ```
