@@ -26,7 +26,7 @@ loss:
   lambda_f0: 1.0
   lambda_uv: 1.0
   lambda_ph_dur: 1.0
-  lambda_word_dur: 0.0 # lambda_word_dur should not be activated, otherwise will be produce NaN value (For VCTK)
+  lambda_word_dur: 0.0 # lambda_word_dur should not be activated, otherwise it will produce NaN value (For VCTK)
   lambda_sent_dur: 1.0
 step:
   total_step: 900000
