@@ -6,7 +6,7 @@ duration_modeling:
   aligner_temperature: 0.0005
 
 prosody_modeling:
-  model_type: "none" # ["du2021", "liu2021", "none"]
+  model_type: "none" # ["none", "du2021", "liu2021"]
 
   # Du et al., 2021
   # This is only supported under supervised duration modeling (learn_alignment: False)

@@ -47,14 +47,14 @@ Toggle the type of prosody modelings by
 ```yaml
 # In the model.yaml
 prosody_modeling:
-  model_type: "none" # ["du2021", "liu2021", "none"]
+  model_type: "none" # ["none", "du2021", "liu2021"]
 ```
 
 Toggle the type of duration modelings by
 ```yaml
 # In the model.yaml
 duration_modeling:
-  learn_alignment: True # for unsupervised modeling, False for supervised modeling
+  learn_alignment: True # True for unsupervised modeling, and False for supervised modeling
 ```
 
 # Quickstart
