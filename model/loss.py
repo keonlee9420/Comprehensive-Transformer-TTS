@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from utils.tools import get_variance_level
+from utils.tools import get_variance_level, ssim
 from text import sil_phonemes_ids
 
 
