@@ -2,10 +2,6 @@
 
 **A Non-Autoregressive Transformer** based TTS, supporting a family of SOTA transformers with supervised and unsupervised duration modelings. This project grows with the research community, **aiming to achieve the ultimate TTS**. Any suggestions toward the best Non-AR TTS are welcome :)
 
-### Updates
-- Feb.XX, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
-- Sep.21, 2021 (v0.1.1): Initialize with [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
-
 ### Transformers
 - [x] [Fastformer: Additive Attention Can Be All You Need](https://arxiv.org/abs/2108.09084) (Wu et al., 2021)
 - [x] [Long-Short Transformer: Efficient Transformers for Language and Vision](https://arxiv.org/abs/2107.02192) (Zhu et al., 2021)
@@ -36,6 +32,7 @@
 |Conformer|18903MiB / 24220MiB|7m 4s
 |Reformer|10293MiB / 24220MiB|10m 16s
 |Transformer|7909MiB / 24220MiB|4m 51s
+|Transformer_fs2|11571MiB / 24220MiB|4m 53s
 
 Toggle the type of building blocks by
 ```yaml
@@ -168,6 +165,17 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 </p>
 
 - For vocoder, **HiFi-GAN** and **MelGAN** are supported.
+
+### Updates Log
+- Feb.12, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
+  1. Prepare two different types of data pipeline in preprocessor to maximize unsupervised/supervised duration modelings
+  2. Adopt wavelet for pitch modeling & loss
+  3. Add fine-trained duration loss
+  4. Apply `var_start_steps` for better model convergence, especially under unsupervised duration modeling
+  5. Remove dependency of energy modeling on pitch variance
+  6. Add "transformer_fs2" building block, which is more close to the original FastSpeech2 paper
+  7. Add two types of prosody modeling methods
+- Sep.21, 2021 (v0.1.1): Initialize with [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
 
 # Citation
 
