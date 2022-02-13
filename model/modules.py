@@ -1063,12 +1063,12 @@ class VarianceAdaptor(nn.Module):
             )
             x, mel_len = self.length_regulator(x, duration_rounded, max_len)
             mel_mask = get_mask_from_lengths(mel_len)
-            pitch_target["mel2ph"] = dur_to_mel2ph(duration_rounded, src_mask)
+            mel2ph = dur_to_mel2ph(duration_rounded, src_mask)
 
         output_2 = x.clone()
         if self.use_pitch_embed:
-            mel2ph = pitch_target["mel2ph"]
             if pitch_target is not None:
+                mel2ph = pitch_target["mel2ph"]
                 if self.pitch_type == "cwt":
                     cwt_spec = pitch_target[f"cwt_spec"]
                     f0_mean = pitch_target["f0_mean"]
