@@ -148,9 +148,17 @@ tensorboard --logdir output/log
 to serve TensorBoard on your localhost.
 The loss curves, synthesized mel-spectrograms, and audios are shown.
 
-<!-- ![](./img/tensorboard_loss.png)
-![](./img/tensorboard_spec.png)
-![](./img/tensorboard_audio.png) -->
+## LJSpeech
+
+![](./img/tensorboard_loss_ljs.png)
+![](./img/tensorboard_spec_ljs.png)
+![](./img/tensorboard_audio_ljs.png)
+
+## VCTK
+
+![](./img/tensorboard_loss_vctk.png)
+![](./img/tensorboard_spec_vctk.png)
+![](./img/tensorboard_audio_vctk.png)
 
 # Notes
 
@@ -175,6 +183,16 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
   5. Remove dependency of energy modeling on pitch variance
   6. Add "transformer_fs2" building block, which is more close to the original FastSpeech2 paper
   7. Add two types of prosody modeling methods
+  8. Loss camparison on validation set:
+    - LJSpeech - blue: v0.1.1 / green: v0.2.0
+    <p align="center">
+        <img src="./img/loss_comparison_ljs.png" width="80%">
+    </p>
+
+    - VCTK - skyblue: v0.1.1 / orange: v0.2.0
+    <p align="center">
+        <img src="./img/loss_comparison_vctk.png" width="80%">
+    </p>
 - Sep.21, 2021 (v0.1.1): Initialize with [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
 
 # Citation
