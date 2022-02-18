@@ -175,7 +175,7 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 - For vocoder, **HiFi-GAN** and **MelGAN** are supported.
 
 ### Updates Log
-- Feb.12, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
+- Feb.18, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
   1. Prepare two different types of data pipeline in preprocessor to maximize unsupervised/supervised duration modelings
   2. Adopt wavelet for pitch modeling & loss
   3. Add fine-trained duration loss
