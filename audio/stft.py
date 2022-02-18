@@ -2,13 +2,20 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from scipy.signal import get_window
+import librosa
 from librosa.util import pad_center, tiny
 from librosa.filters import mel as librosa_mel_fn
+import pyloudnorm as pyln
 
 from audio.audio_processing import (
     dynamic_range_compression,
     dynamic_range_decompression,
     window_sumsquare,
+)
+from audio.tools import (
+    librosa_pad_lr,
+    amp_to_db,
+    normalize,
 )
 
 
@@ -176,3 +183,77 @@ class TacotronSTFT(torch.nn.Module):
         energy = torch.norm(magnitudes, dim=1)
 
         return mel_output, energy
+
+
+class FastSpeechSTFT(torch.nn.Module):
+    def __init__(
+        self,
+        fft_size,
+        hop_size,
+        win_length,
+        num_mels,
+        sample_rate,
+        fmin,
+        fmax,
+        window='hann',
+        eps=1e-10,
+        loud_norm=False,
+        min_level_db=-100,
+    ):
+        super(FastSpeechSTFT, self).__init__()
+        self.fft_size = fft_size
+        self.hop_size = hop_size
+        self.win_length = win_length
+        self.num_mels = num_mels
+        self.sample_rate = sample_rate
+        self.fmin = fmin
+        self.fmax = fmax
+        self.window = window
+        self.eps = eps
+        self.loud_norm = loud_norm
+        self.min_level_db = min_level_db
+
+    def mel_spectrogram(self, wav, return_linear=False):
+        """Computes mel-spectrograms from a batch of waves
+        PARAMS
+        ------
+        wav: Variable(torch.FloatTensor) with shape (B, T) in range [-1, 1]
+
+        RETURNS
+        -------
+        mel_output: torch.FloatTensor of shape (B, n_mel_channels, T)
+        """
+        if self.loud_norm:
+            meter = pyln.Meter(self.sample_rate)  # create BS.1770 meter
+            loudness = meter.integrated_loudness(wav)
+            wav = pyln.normalize.loudness(wav, loudness, -22.0)
+            if np.abs(wav).max() > 1:
+                wav = wav / np.abs(wav).max()
+
+        # get amplitude spectrogram
+        x_stft = librosa.stft(wav, n_fft=self.fft_size, hop_length=self.hop_size,
+                            win_length=self.win_length, window=self.window, pad_mode="constant")
+        spc = np.abs(x_stft)  # (n_bins, T)
+
+        # get mel basis
+        fmin = 0 if self.fmin == -1 else self.fmin
+        fmax = sample_rate / 2 if self.fmax == -1 else self.fmax
+        mel_basis = librosa.filters.mel(self.sample_rate, self.fft_size, self.num_mels, self.fmin, self.fmax)
+        mel = mel_basis @ spc
+
+        # get log scaled mel
+        mel = np.log10(np.maximum(self.eps, mel))
+
+        l_pad, r_pad = librosa_pad_lr(wav, self.fft_size, self.hop_size, 1)
+        wav = np.pad(wav, (l_pad, r_pad), mode='constant', constant_values=0.0)
+        wav = wav[:mel.shape[1] * self.hop_size]
+
+        # get energy
+        energy = np.sqrt(np.exp(mel) ** 2).sum(-1)
+
+        if not return_linear:
+            return wav, mel, energy
+        else:
+            spc = amp_to_db(spc)
+            spc = normalize(spc, self.min_level_db)
+            return wav, mel, energy, spc

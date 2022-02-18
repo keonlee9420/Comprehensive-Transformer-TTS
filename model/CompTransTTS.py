@@ -16,7 +16,9 @@ class CompTransTTS(nn.Module):
         super(CompTransTTS, self).__init__()
         self.model_config = model_config
 
-        if model_config["block_type"] == "transformer":
+        if model_config["block_type"] == "transformer_fs2":
+            from .transformers.transformer_fs2 import TextEncoder, Decoder
+        elif model_config["block_type"] == "transformer":
             from .transformers.transformer import TextEncoder, Decoder
         elif model_config["block_type"] == "lstransformer":
             from .transformers.lstransformer import TextEncoder, Decoder
@@ -30,10 +32,10 @@ class CompTransTTS(nn.Module):
             raise NotImplementedError
 
         self.encoder = TextEncoder(model_config)
-        self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config, train_config)
+        self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config, train_config, self.encoder.d_model)
         self.decoder = Decoder(model_config)
         self.mel_linear = nn.Linear(
-            model_config["transformer"]["decoder_hidden"],
+            self.decoder.d_model,
             preprocess_config["preprocessing"]["mel"]["n_mel_channels"],
         )
         self.postnet = PostNet()
@@ -51,12 +53,12 @@ class CompTransTTS(nn.Module):
                     n_speaker = len(json.load(f))
                 self.speaker_emb = nn.Embedding(
                     n_speaker,
-                    model_config["transformer"]["encoder_hidden"],
+                    self.encoder.d_model,
                 )
             else:
                 self.speaker_emb = nn.Linear(
                     model_config["external_speaker_dim"],
-                    model_config["transformer"]["encoder_hidden"],
+                    self.encoder.d_model,
                 )
 
     def forward(
@@ -106,6 +108,7 @@ class CompTransTTS(nn.Module):
             mel_lens,
             mel_masks,
             attn_outs,
+            prosody_info,
         ) = self.variance_adaptor(
             speaker_embeds,
             texts,
@@ -143,6 +146,7 @@ class CompTransTTS(nn.Module):
             src_lens,
             mel_lens,
             attn_outs,
+            prosody_info,
             p_targets,
             e_targets,
         )

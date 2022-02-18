@@ -17,13 +17,28 @@ optimizer:
   warm_up_step: 4000
   anneal_steps: [300000, 400000, 500000]
   anneal_rate: 0.3
+loss:
+  noise_loss: "l1"
+  dur_loss: "mse"
+  pitch_loss: "l1"
+  cwt_loss: "l1"
+  # cwt_add_f0_loss: false
+  lambda_f0: 1.0
+  lambda_uv: 1.0
+  lambda_ph_dur: 1.0
+  lambda_word_dur: 0.0 # lambda_word_dur should not be activated, otherwise it will produce NaN value (For VCTK)
+  lambda_sent_dur: 1.0
 step:
   total_step: 900000
   log_step: 100
   synth_step: 1000
   val_step: 1000
   save_step: 25000
+  var_start_steps: 50000
 duration:
   binarization_start_steps: 6000
   binarization_loss_enable_steps: 18000
   binarization_loss_warmup_steps: 10000
+prosody:
+  gmm_mdn_beta: 0.02
+  prosody_loss_enable_steps: 100000

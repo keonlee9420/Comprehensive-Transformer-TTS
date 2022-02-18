@@ -12,6 +12,7 @@ preprocessing:
     text_cleaners: ["english_cleaners"]
     language: "en"
   audio:
+    trim_top_db: 23
     sampling_rate: 22050
     max_wav_value: 32768.0
   stft:
@@ -23,8 +24,14 @@ preprocessing:
     mel_fmin: 0
     mel_fmax: 8000 # please set to 8000 for HiFi-GAN vocoder, set to null for MelGAN vocoder
   pitch:
-    feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
-    normalization: True
+    pitch_type: "cwt" # support 'frame', 'ph', 'cwt'
+    pitch_norm: "log" # support 'standard', 'log'
+    pitch_norm_eps: 0.000000001
+    pitch_ar: False
+    with_f0: True
+    with_f0cwt: True
+    use_uv: True
+    cwt_scales: -1
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True

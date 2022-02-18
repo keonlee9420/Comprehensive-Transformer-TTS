@@ -3,6 +3,7 @@ import os
 
 import torch
 import yaml
+import numpy as np
 import torch.nn as nn
 import torch.multiprocessing as mp
 from torch.utils.tensorboard import SummaryWriter
@@ -35,8 +36,10 @@ def train(rank, args, configs, batch_size, num_gpus):
     device = torch.device('cuda:{:d}'.format(rank))
 
     # Get dataset
+    learn_alignment = model_config["duration_modeling"]["learn_alignment"]
+    dataset_tag = "unsup" if learn_alignment else "sup"
     dataset = Dataset(
-        "train.txt", preprocess_config, model_config, train_config, sort=True, drop_last=True
+        "train_{}.txt".format(dataset_tag), preprocess_config, model_config, train_config, sort=True, drop_last=True
     )
     data_sampler = DistributedSampler(dataset) if num_gpus > 1 else None
     group_size = 4  # Set this larger than 1 to enable sorting in Dataset
@@ -101,7 +104,7 @@ def train(rank, args, configs, batch_size, num_gpus):
                 with amp.autocast(args.use_amp):
                     # Forward
                     output = model(*(batch[2:]), step=step)
-                    batch[9:11], output = output[-2:], output[:-2] # Update pitch and energy level
+                    batch[9:11], output = output[-2:], output[:-2] # Update pitch and energy by VarianceAdaptor
 
                     # Cal Loss
                     losses = Loss(batch, output, step=step)
@@ -117,16 +120,16 @@ def train(rank, args, configs, batch_size, num_gpus):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
 
                 # Update weights
-                optimizer.step_and_update_lr(scaler)
+                lr = optimizer.step_and_update_lr(scaler)
                 scaler.update()
                 optimizer.zero_grad()
 
                 if rank == 0:
                     if step % log_step == 0:
-                        losses = [l.item() for l in losses]
+                        losses_ = [sum(l.values()).item() if isinstance(l, dict) else l.item() for l in losses]
                         message1 = "Step {}/{}, ".format(step, total_step)
-                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, CTC Loss: {:.4f}, Binarization Loss: {:.4f}".format(
-                            *losses
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, CTC Loss: {:.4f}, Binarization Loss: {:.4f}, Prosody Loss: {:.4f}".format(
+                            *losses_
                         )
 
                         with open(os.path.join(train_log_path, "log.txt"), "a") as f:
@@ -134,10 +137,10 @@ def train(rank, args, configs, batch_size, num_gpus):
 
                         outer_bar.write(message1 + message2)
 
-                        log(train_logger, step, losses=losses)
+                        log(train_logger, step, losses=losses, lr=lr)
 
                     if step % synth_step == 0:
-                        fig, fig_attn, wav_reconstruction, wav_prediction, tag = synth_one_sample(
+                        figs, fig_attn, wav_reconstruction, wav_prediction, tag = synth_one_sample(
                             batch,
                             output,
                             vocoder,
@@ -147,33 +150,37 @@ def train(rank, args, configs, batch_size, num_gpus):
                         if fig_attn is not None:
                             log(
                                 train_logger,
+                                step,
                                 img=fig_attn,
-                                tag="Training_attn/step_{}_{}".format(step, tag),
+                                tag="Training/attn",
                             )
                         log(
                             train_logger,
-                            img=fig,
-                            tag="Training/step_{}_{}".format(step, tag),
+                            step,
+                            figs=figs,
+                            tag="Training",
                         )
                         sampling_rate = preprocess_config["preprocessing"]["audio"][
                             "sampling_rate"
                         ]
                         log(
                             train_logger,
+                            step,
                             audio=wav_reconstruction,
                             sampling_rate=sampling_rate,
-                            tag="Training/step_{}_{}_reconstructed".format(step, tag),
+                            tag="Training/reconstructed",
                         )
                         log(
                             train_logger,
+                            step,
                             audio=wav_prediction,
                             sampling_rate=sampling_rate,
-                            tag="Training/step_{}_{}_synthesized".format(step, tag),
+                            tag="Training/synthesized",
                         )
 
                     if step % val_step == 0:
                         model.eval()
-                        message = evaluate(device, model, step, configs, val_logger, vocoder, len(losses))
+                        message = evaluate(device, model, step, configs, val_logger, vocoder, losses)
                         with open(os.path.join(val_log_path, "log.txt"), "a") as f:
                             f.write(message + "\n")
                         outer_bar.write(message)
@@ -219,6 +226,9 @@ if __name__ == "__main__":
     # Read Config
     preprocess_config, model_config, train_config = get_configs_of(args.dataset)
     configs = (preprocess_config, model_config, train_config)
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == "cwt":
+        from utils.pitch_tools import get_lf0_cwt
+        preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
 
     # Set Device
     torch.manual_seed(train_config["seed"])
@@ -234,6 +244,7 @@ if __name__ == "__main__":
     print(' ---> Batch size in total:', batch_size * num_gpus)
     print(" ---> Type of Building Block:", model_config["block_type"])
     print(" ---> Type of Duration Modeling:", "unsupervised" if model_config["duration_modeling"]["learn_alignment"] else "supervised")
+    print(" ---> Type of Prosody Modeling:", model_config["prosody_modeling"]["model_type"])
     print("=================================================================================================")
     print("Prepare training ...")
 

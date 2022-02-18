@@ -32,3 +32,24 @@ def inv_mel_spec(mel, out_filename, _stft, griffin_iters=60):
     audio = audio.cpu().numpy()
     audio_path = out_filename
     write(audio_path, _stft.sampling_rate, audio)
+
+
+def librosa_pad_lr(x, fsize, fshift, pad_sides=1):
+    '''compute right padding (final frame) or both sides padding (first and final frames)
+    '''
+    assert pad_sides in (1, 2)
+    # return int(fsize // 2)
+    pad = (x.shape[0] // fshift + 1) * fshift - x.shape[0]
+    if pad_sides == 1:
+        return 0, pad
+    else:
+        return pad // 2, pad // 2 + pad % 2
+
+
+# Conversions
+def amp_to_db(x):
+    return 20 * np.log10(np.maximum(1e-5, x))
+
+
+def normalize(S, min_level_db):
+    return (S - min_level_db) / -min_level_db

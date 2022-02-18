@@ -9,6 +9,10 @@
 - [x] [Reformer: The Efficient Transformer](https://arxiv.org/abs/2001.04451) (Kitaev et al., 2020)
 - [x] [Attention Is All You Need](https://arxiv.org/abs/1706.03762) (Vaswani et al., 2017)
 
+### Prosody Modelings (WIP)
+- [x] [DelightfulTTS: The Microsoft Speech Synthesis System for Blizzard Challenge 2021](https://arxiv.org/abs/2110.12612) (Liu et al., 2021)
+- [x] [Rich Prosody Diversity Modelling with Phone-level Mixture Density Network](https://arxiv.org/abs/2102.00851) (Du et al., 2021)
+
 ### Supervised Duration Modelings
 - [x] [FastSpeech 2: Fast and High-Quality End-to-End Text to Speech](https://arxiv.org/abs/2006.04558) (Ren et al., 2020)
 
@@ -28,18 +32,26 @@
 |Conformer|18903MiB / 24220MiB|7m 4s
 |Reformer|10293MiB / 24220MiB|10m 16s
 |Transformer|7909MiB / 24220MiB|4m 51s
+|Transformer_fs2|11571MiB / 24220MiB|4m 53s
 
 Toggle the type of building blocks by
 ```yaml
 # In the model.yaml
-block_type: "transformer" # ["transformer", "fastformer", "lstransformer", "conformer", "reformer"]
+block_type: "transformer_fs2" # ["transformer_fs2", "transformer", "fastformer", "lstransformer", "conformer", "reformer"]
+```
+
+Toggle the type of prosody modelings by
+```yaml
+# In the model.yaml
+prosody_modeling:
+  model_type: "none" # ["none", "du2021", "liu2021"]
 ```
 
 Toggle the type of duration modelings by
 ```yaml
 # In the model.yaml
 duration_modeling:
-  learn_alignment: True # for unsupervised modeling, False for supervised modeling
+  learn_alignment: True # True for unsupervised modeling, and False for supervised modeling
 ```
 
 # Quickstart
@@ -55,7 +67,7 @@ Also, `Dockerfile` is provided for `Docker` users.
 
 ## Inference
 
-You have to download the [pretrained models](https://drive.google.com/drive/folders/1xEOVbv3PLfGX8EgEkzg1014c9h8QMxQ-?usp=sharing) and put them in `output/ckpt/DATASET/`. The models are trained with unsupervised duration modeling under transformer building block.
+You have to download the [pretrained models](https://drive.google.com/drive/folders/1xEOVbv3PLfGX8EgEkzg1014c9h8QMxQ-?usp=sharing) and put them in `output/ckpt/DATASET/`. The models are trained under unsupervised duration modeling with "transformer_fs2" building block.
 
 For a **single-speaker TTS**, run
 ```
@@ -109,7 +121,7 @@ Any of both **single-speaker TTS** dataset (e.g., [Blizzard Challenge 2013](http
 
   For the forced alignment, [Montreal Forced Aligner](https://montreal-forced-aligner.readthedocs.io/en/latest/) (MFA) is used to obtain the alignments between the utterances and the phoneme sequences.
   Pre-extracted alignments for the datasets are provided [here](https://drive.google.com/drive/folders/1fizpyOiQ1lG2UDaMlXnT3Ll4_j6Xwg7K?usp=sharing). 
-  You have to unzip the files in `preprocessed_data/DATASET/TextGrid/`. Alternately, you can [run the aligner by yourself](https://montreal-forced-aligner.readthedocs.io/en/latest/aligning.html).
+  You have to unzip the files in `preprocessed_data/DATASET/TextGrid/`. Alternately, you can [run the aligner by yourself](https://montreal-forced-aligner.readthedocs.io/en/latest/user_guide/workflows/index.html).
 
   After that, run the preprocessing script by
   ```
@@ -136,15 +148,22 @@ tensorboard --logdir output/log
 to serve TensorBoard on your localhost.
 The loss curves, synthesized mel-spectrograms, and audios are shown.
 
-![](./img/tensorboard_loss.png)
-![](./img/tensorboard_spec.png)
-![](./img/tensorboard_audio.png)
+## LJSpeech
+
+![](./img/tensorboard_loss_ljs.png)
+![](./img/tensorboard_spec_ljs.png)
+![](./img/tensorboard_audio_ljs.png)
+
+## VCTK
+
+![](./img/tensorboard_loss_vctk.png)
+![](./img/tensorboard_spec_vctk.png)
+![](./img/tensorboard_audio_vctk.png)
 
 # Notes
 
 - Both phoneme-level and frame-level variance are supported in both supervised and unsupervised duration modeling.
 - Note that there are no pre-extracted phoneme-level variance features in unsupervised duration modeling.
-- Convolutional embedding is used as [StyleSpeech](https://github.com/keonlee9420/StyleSpeech) for phoneme-level variance in unsupervised duration modeling. Otherwise, bucket-based embedding is used as [FastSpeech2](https://github.com/ming024/FastSpeech2).
 - Unsupervised duration modeling in phoneme-level will take longer time than frame-level since the additional computation of phoneme-level variance is activated at runtime.
 - Two options for embedding for the **multi-speaker TTS** setting: training speaker embedder from scratch or using a pre-trained [philipperemy's DeepSpeaker](https://github.com/philipperemy/deep-speaker) model (as [STYLER](https://github.com/keonlee9420/STYLER) did). You can toggle it by setting the config (between `'none'` and `'DeepSpeaker'`).
 - DeepSpeaker on VCTK dataset shows clear identification among speakers. The following figure shows the T-SNE plot of extracted speaker embedding.
@@ -154,6 +173,27 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 </p>
 
 - For vocoder, **HiFi-GAN** and **MelGAN** are supported.
+
+### Updates Log
+- Feb.18, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
+  1. Prepare two different types of data pipeline in preprocessor to maximize unsupervised/supervised duration modelings
+  2. Adopt wavelet for pitch modeling & loss
+  3. Add fine-trained duration loss
+  4. Apply `var_start_steps` for better model convergence, especially under unsupervised duration modeling
+  5. Remove dependency of energy modeling on pitch variance
+  6. Add "transformer_fs2" building block, which is more close to the original FastSpeech2 paper
+  7. Add two types of prosody modeling methods
+  8. Loss camparison on validation set:
+    - LJSpeech - blue: v0.1.1 / green: v0.2.0
+    <p align="center">
+        <img src="./img/loss_comparison_ljs.png" width="80%">
+    </p>
+
+    - VCTK - skyblue: v0.1.1 / orange: v0.2.0
+    <p align="center">
+        <img src="./img/loss_comparison_vctk.png" width="80%">
+    </p>
+- Sep.21, 2021 (v0.1.1): Initialize with [ming024's FastSpeech2](https://github.com/ming024/FastSpeech2)
 
 # Citation
 
@@ -166,4 +206,8 @@ Please cite this repository by the "[Cite this repository](https://github.blog/2
 - [lucidrains' long-short-transformer](https://github.com/lucidrains/long-short-transformer)
 - [sooftware's conformer](https://github.com/sooftware/conformer)
 - [lucidrains' reformer-pytorch](https://github.com/lucidrains/reformer-pytorch)
+- [sagelywizard's pytorch-mdn](https://github.com/sagelywizard/pytorch-mdn)
+- [keonlee9420's Robust_Fine_Grained_Prosody_Control](https://github.com/keonlee9420/Robust_Fine_Grained_Prosody_Control)
+- [keonlee9420's Cross-Speaker-Emotion-Transfer](https://github.com/keonlee9420/Cross-Speaker-Emotion-Transfer)
+- [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger)
 - [NVIDIA's NeMo](https://github.com/NVIDIA/NeMo): Special thanks to [Onur Babacan](https://github.com/babua) and [Rafael Valle](https://github.com/rafaelvalle) for unsupervised duration modeling.

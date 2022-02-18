@@ -1,8 +1,45 @@
-block_type: "transformer"
+block_type: "transformer_fs2" # ["transformer_fs2", "transformer", "fastformer", "lstransformer", "conformer", "reformer"]
 
 duration_modeling:
   learn_alignment: True
   aligner_temperature: 0.0005
+
+prosody_modeling:
+  model_type: "none" # ["none", "du2021", "liu2021"]
+
+  # Du et al., 2021
+  # This is only supported under supervised duration modeling (learn_alignment: False)
+  du2021:
+    extractor_kernel_size: 9
+    predictor_kernel_size: [9, 5]
+    predictor_num_gaussians: 20
+    predictor_dropout: 0.2
+
+  # Liu et al., 2021
+  # This is only tested under supervised duration modeling (learn_alignment: False)
+  liu2021:
+    bottleneck_size_u: 256
+    bottleneck_size_p: 4
+    ref_enc_filters: [32, 32, 64, 64, 128, 128]
+    ref_enc_size: [3, 3]
+    ref_enc_strides: [1, 2] # '1' is to keep the sequence length
+    ref_enc_pad: [1, 1]
+    ref_enc_gru_size: 32
+    ref_attention_dropout: 0.
+    token_num: 32
+    predictor_kernel_size: 3 # [9, 5] for non-parallel predictor / 3 for parallel predictor
+    predictor_dropout: 0.5
+
+transformer_fs2:
+  encoder_layer: 4
+  encoder_head: 2
+  encoder_hidden: 256
+  decoder_layer: 6
+  decoder_head: 2
+  decoder_hidden: 256
+  ffn_kernel_size: 9
+  encoder_dropout: 0.1
+  decoder_dropout: 0.1
 
 transformer:
   encoder_layer: 4
@@ -37,18 +74,27 @@ reformer:
 
 variance_predictor:
   filter_size: 256
-  kernel_size: 3
+  predictor_grad: 0.1
+  predictor_layers: 2
+  predictor_kernel: 5
+  cwt_hidden_size: 128
+  cwt_std_scale: 0.8
+  dur_predictor_layers: 2
+  dur_predictor_kernel: 3
   dropout: 0.5
+  ffn_padding: "SAME"
+  ffn_act: "gelu"
 
 variance_embedding:
-  kernel_size: 9
-  pitch_quantization: "linear" # support 'linear' or 'log', 'log' is allowed only if the pitch values are not normalized during preprocessing
+  use_pitch_embed: True
+  pitch_n_bins: 300
+  use_energy_embed: True
+  energy_n_bins: 256
   energy_quantization: "linear" # support 'linear' or 'log', 'log' is allowed only if the energy values are not normalized during preprocessing
-  n_bins: 256
 
 multi_speaker: False
 
-max_seq_len: 1000
+max_seq_len: 1000 # max sequence length of LJSpeech is 870
 
 vocoder:
   model: "HiFi-GAN" # support 'HiFi-GAN', 'MelGAN'

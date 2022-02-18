@@ -1,25 +1,28 @@
-product_key_memory == 0.1.10
-local_attention == 1.4.3
-rotary_embedding_torch == 0.1.0
-python_speech_features == 0.6
-pandas == 1.1.5 
-tensorflow == 2.5.1
-g2p-en == 2.1.0
-inflect == 4.1.0
-librosa == 0.7.2
-matplotlib == 3.2.2
-numba == 0.48
-numpy == 1.19.2
+product_key_memory==0.1.10
+local_attention==1.4.3
+rotary_embedding_torch==0.1.0
+python_speech_features==0.6
+pandas==1.1.5 
+tensorflow==2.5.1
+g2pen== 2.1.0
+inflect==4.1.0
+librosa==0.7.2
+matplotlib==3.2.2
+numba==0.48.0
+numpy==1.19.4
+pyloudnorm==0.1.0
 pypinyin==0.39.0
-pyworld == 0.3.0
+pyworld==0.3.0
+pycwt==0.3.0a22
+praatparselmouth== 0.3.3
 PyYAML==5.4.1
-scikit-learn==0.23.2
-scipy == 1.5.0
+scikitlearn== 0.22.2.post1
+scipy==1.5.4
 soundfile==0.10.3.post1
-tensorboard == 2.5
-tgt == 1.4.4
-torch == 1.7.0
+tensorboard==2.5
+tgt==1.4.4
+torch==1.7.0
 tqdm==4.46.1
-unidecode == 1.1.1
-pillow == 8.3.2
-einops >= 0.3
+unidecode==1.1.1
+pillow==8.3.2
+einops>=0.3

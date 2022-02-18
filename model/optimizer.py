@@ -20,8 +20,9 @@ class ScheduledOptim:
         self.init_lr = np.power(model_config["transformer"]["encoder_hidden"], -0.5)
 
     def step_and_update_lr(self, scaler):
-        self._update_learning_rate()
+        lr = self._update_learning_rate()
         scaler.step(self._optimizer)
+        return lr
 
     def zero_grad(self):
         # print(self.init_lr)
@@ -49,3 +50,4 @@ class ScheduledOptim:
 
         for param_group in self._optimizer.param_groups:
             param_group["lr"] = lr
+        return lr

@@ -174,6 +174,9 @@ if __name__ == "__main__":
     # Read Config
     preprocess_config, model_config, train_config = get_configs_of(args.dataset)
     configs = (preprocess_config, model_config, train_config)
+    if preprocess_config["preprocessing"]["pitch"]["pitch_type"] == "cwt":
+        from utils.pitch_tools import get_lf0_cwt
+        preprocess_config["preprocessing"]["pitch"]["cwt_scales"] = get_lf0_cwt(np.ones(10))[1]
     os.makedirs(
         os.path.join(train_config["path"]["result_path"], str(args.restore_step)), exist_ok=True)
 
