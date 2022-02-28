@@ -125,12 +125,6 @@ class Dataset(Dataset):
             )
             f0cwt_mean_std = np.load(f0cwt_mean_std_path)
             f0_mean, f0_std = float(f0cwt_mean_std[0]), float(f0cwt_mean_std[1])
-        elif self.pitch_type == "ph":
-            f0_phlevel_sum = torch.zeros(phone.shape).float().scatter_add(
-                0, torch.from_numpy(mel2ph).long() - 1, torch.from_numpy(f0).float())
-            f0_phlevel_num = torch.zeros(phone.shape).float().scatter_add(
-                0, torch.from_numpy(mel2ph).long() - 1, torch.ones(f0.shape)).clamp_min(1)
-            f0_ph = (f0_phlevel_sum / f0_phlevel_num).numpy()
 
         sample = {
             "id": basename,
@@ -140,7 +134,6 @@ class Dataset(Dataset):
             "mel": mel,
             "pitch": pitch,
             "f0": f0,
-            "f0_ph": f0_ph,
             "uv": uv,
             "cwt_spec": cwt_spec,
             "f0_mean": f0_mean,
@@ -187,8 +180,6 @@ class Dataset(Dataset):
             cwt_specs = pad_2D(cwt_specs)
             f0_means = np.array(f0_means)
             f0_stds = np.array(f0_stds)
-        elif self.pitch_type == "ph":
-            f0s = [data[idx]["f0_ph"] for idx in idxs]
         energies = [data[idx]["energy"] for idx in idxs]
         durations = [data[idx]["duration"] for idx in idxs] if not self.learn_alignment else None
         mel2phs = [data[idx]["mel2ph"] for idx in idxs] if not self.learn_alignment else None

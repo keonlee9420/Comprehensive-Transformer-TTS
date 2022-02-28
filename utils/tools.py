@@ -44,6 +44,15 @@ def get_variance_level(preprocess_config, model_config, data_loading=True):
     return energy_level_tag, energy_feature_level
 
 
+def get_phoneme_level_pitch(phone, mel2ph, pitch):
+    pitch_phlevel_sum = torch.zeros(phone.shape[:-1]).float().scatter_add(
+        0, torch.from_numpy(mel2ph).long() - 1, torch.from_numpy(pitch).float())
+    pitch_phlevel_num = torch.zeros(phone.shape[:-1]).float().scatter_add(
+        0, torch.from_numpy(mel2ph).long() - 1, torch.ones(pitch.shape)).clamp_min(1)
+    pitch = (pitch_phlevel_sum / pitch_phlevel_num).numpy()
+    return pitch
+
+
 def get_phoneme_level_energy(duration, energy):
     # Phoneme-level average
     pos = 0

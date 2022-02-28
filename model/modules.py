@@ -12,6 +12,7 @@ import torch.nn.functional as F
 
 from utils.tools import (
     get_variance_level,
+    get_phoneme_level_pitch,
     get_phoneme_level_energy,
     get_mask_from_lengths,
     pad_1D,
@@ -870,6 +871,14 @@ class VarianceAdaptor(nn.Module):
             attn_out = b_mas(attn_cpu, in_lens.cpu().numpy(), out_lens.cpu().numpy(), width=1)
         return torch.from_numpy(attn_out).to(attn.device)
 
+    def get_phoneme_level_pitch(self, phone, src_len, mel2ph, mel_len, pitch_frame):
+        return torch.from_numpy(
+            pad_1D(
+                [get_phoneme_level_pitch(ph[:s_len], m2ph[:m_len], var[:m_len]) for ph, s_len, m2ph, m_len, var \
+                        in zip(phone.int().cpu().numpy(), src_len.cpu().numpy(), mel2ph.cpu().numpy(), mel_len.cpu().numpy(), pitch_frame.cpu().numpy())]
+            )
+        ).float().to(pitch_frame.device)
+
     def get_phoneme_level_energy(self, duration, src_len, energy_frame):
         return torch.from_numpy(
             pad_1D(
@@ -972,7 +981,7 @@ class VarianceAdaptor(nn.Module):
     ):
         pitch_prediction = energy_prediction = prosody_info = None
 
-        x = text
+        x = text.clone()
         if speaker_embedding is not None:
             x = x + speaker_embedding.unsqueeze(1).expand(
                 -1, text.shape[1], -1
@@ -1032,17 +1041,8 @@ class VarianceAdaptor(nn.Module):
             attn_hard_dur = attn_hard.sum(2)[:, 0, :]
         attn_out = (attn_soft, attn_hard, attn_hard_dur, attn_logprob)
 
-        # Note that there is no pre-extracted phoneme-level variance features in unsupervised duration modeling.
-        # Alternatively, we can use attn_hard_dur instead of duration_target for computing phoneme-level variances.
-        output_1 = x.clone()
-        if self.use_energy_embed and self.energy_feature_level == "phoneme_level":
-            if attn_prior is not None:
-                energy_target = self.get_phoneme_level_energy(attn_hard_dur, src_len, energy_target)
-            energy_prediction, energy_embedding = self.get_energy_embedding(x, energy_target, src_mask, e_control)
-            output_1 = output_1 + energy_embedding
-        x = output_1.clone()
-
         # Upsampling from src length to mel length
+        x_org = x.clone()
         if attn_prior is not None: # Trainig of unsupervised duration modeling
             if step < self.binarization_start_steps:
                 A_soft = attn_soft.squeeze(1)
@@ -1065,7 +1065,9 @@ class VarianceAdaptor(nn.Module):
             mel_mask = get_mask_from_lengths(mel_len)
             mel2ph = dur_to_mel2ph(duration_rounded, src_mask)
 
-        output_2 = x.clone()
+        # Note that there is no pre-extracted phoneme-level variance features in unsupervised duration modeling.
+        # Alternatively, we can use attn_hard_dur instead of duration_target for computing phoneme-level variances.
+        x_temp = x.clone()
         if self.use_pitch_embed:
             if pitch_target is not None:
                 mel2ph = pitch_target["mel2ph"]
@@ -1077,18 +1079,25 @@ class VarianceAdaptor(nn.Module):
                         cwt_spec, f0_mean, f0_std, mel2ph, self.preprocess_config["preprocessing"]["pitch"],
                     )
                     pitch_target.update({"f0_cwt": pitch_target["f0"]})
+                if self.pitch_type == "ph":
+                    pitch_target["f0"] = self.get_phoneme_level_pitch(text, src_len, mel2ph, mel_len, pitch_target["f0"])
                 pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                    x, pitch_target["f0"], pitch_target["uv"], mel2ph, p_control, encoder_out=output_1
+                    x, pitch_target["f0"], pitch_target["uv"], mel2ph, p_control, encoder_out=x_org
                 )
             else:
                 pitch_prediction, pitch_embedding = self.get_pitch_embedding(
-                    x, None, None, mel2ph, p_control, encoder_out=output_1
+                    x, None, None, mel2ph, p_control, encoder_out=x_org
                 )
-            output_2 = output_2 + pitch_embedding
+            x_temp = x_temp + pitch_embedding
         if self.use_energy_embed and self.energy_feature_level == "frame_level":
             energy_prediction, energy_embedding = self.get_energy_embedding(x, energy_target, mel_mask, e_control)
-            output_2 = output_2 + energy_embedding
-        x = output_2.clone()
+            x_temp = x_temp + energy_embedding
+        elif self.use_energy_embed and self.energy_feature_level == "phoneme_level":
+            if attn_prior is not None:
+                energy_target = self.get_phoneme_level_energy(attn_hard_dur, src_len, energy_target)
+            energy_prediction, energy_embedding = self.get_energy_embedding(x_org, energy_target, src_mask, e_control)
+            x_temp = x_temp + self.length_regulator(energy_embedding, duration_rounded, max_len)[0]
+        x = x_temp.clone()
 
         return (
             x,

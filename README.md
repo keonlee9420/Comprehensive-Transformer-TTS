@@ -160,6 +160,23 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 ![](./img/tensorboard_spec_vctk.png)
 ![](./img/tensorboard_audio_vctk.png)
 
+## Ablation Study
+![](./img/tensorboard_loss_ljs_comparison.png)
+
+| ID | Model | Block Type | Pitch Conditioning |
+| --- | --- | ----------- | ----- |
+|1|LJSpeech_transformer_fs2_cwt| `transformer_fs2` | continuous wavelet transform
+|2|LJSpeech_transformer_cwt| `transformer` | continuous wavelet transform
+|3|LJSpeech_transformer_frame| `transformer` | frame-level f0
+|4|LJSpeech_transformer_ph| `transformer` | phoneme-level f0
+
+Observations from
+1. changing building block (ID 1~2):
+  "transformer_fs2" seems to be more optimized in terms of memory usage and model size so that the training time and mel losses are decreased. However, the output quality is not improved dramatically, and sometimes the "transformer" block generates speech with an even more stable pitch contour than "transformer_fs2".
+2. changing pitch conditioning (ID 2~4): There is a trade-off between audio quality (pitch stability) and expressiveness.
+    - audio quality: "ph" >= "frame" > "cwt"
+    - expressiveness: "cwt" > "frame" > "ph"
+
 # Notes
 
 - Both phoneme-level and frame-level variance are supported in both supervised and unsupervised duration modeling.
@@ -175,6 +192,10 @@ The loss curves, synthesized mel-spectrograms, and audios are shown.
 - For vocoder, **HiFi-GAN** and **MelGAN** are supported.
 
 ### Updates Log
+- Mar.05, 2022 (v0.2.1): Fix and update codebase & pre-trained models with demo samples
+  1. Fix variance adaptor to make it work with all combinations of building block and variance type/level
+  2. Update pre-trained models with demo samples of LJSpeech and VCTK under "transformer_fs2" building block and "cwt" pitch conditioning
+  3. Share the result of ablation studies of comparing "transformer" vs. "transformer_fs2" paired among three types of pitch conditioning ("frame", "ph", and "cwt")
 - Feb.18, 2022 (v0.2.0): Update data preprocessor and variance adaptor & losses following [keonlee9420's DiffSinger](https://github.com/keonlee9420/DiffSinger) / Add various prosody modeling methods
   1. Prepare two different types of data pipeline in preprocessor to maximize unsupervised/supervised duration modelings
   2. Adopt wavelet for pitch modeling & loss
