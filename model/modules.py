@@ -712,7 +712,7 @@ class NonParallelProsodyPredictor(nn.Module):
         outputs = torch.stack(outputs[1:], dim=1) # [B, src_len, 2 * d_model]
 
         if mask is not None:
-            outputs = outputs.masked_fill(mask, 0.0)
+            outputs = outputs.masked_fill(mask.unsqueeze(-1), 0.0)
 
         if self.phoneme_level:
             prosody_vector = outputs # [B, src_len, 2 * d_model]
